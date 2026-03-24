@@ -3,6 +3,7 @@ import json
 import threading
 import time
 import sys
+import traceback
 from textual.app import App, ComposeResult
 from textual.widgets import Header, Footer, Static
 from textual.containers import Container, Vertical
@@ -28,7 +29,8 @@ class GameStatus(Static):
             return
         player = state['players'][0]
         room_id = str(player['room_id'])
-        keys_str = ", ".join([C64_COLOR_NAMES.get(k & 0xF, str(k)) for k in player.get('keys', [])])
+        # Safe integer cast for key colors
+        keys_str = ", ".join([C64_COLOR_NAMES.get(int(k) & 0xF, str(k)) for k in player.get('keys', [])])
         self.update(f"Tick: {state['tick']} | Room: {room_id} | Pos: {player['x']:.1f},{player['y']:.1f} | Keys: [{keys_str}]")
 
 class GameBoard(Static):
@@ -45,7 +47,7 @@ class GameBoard(Static):
             self.update(f"Player in unknown room {room_id}")
             return
 
-        # 2X scale: 80x50 content
+        # 2X scale room card: 80x50 content
         width, height = 80, 50
         grid = [[(' ', 1) for _ in range(width)] for _ in range(height)]
         floor_color = 1 
@@ -82,9 +84,7 @@ class GameBoard(Static):
                 color = 2 if props['is_exit'] else floor_color
                 for dy in range(8):
                     for dx in range(10):
-                        # Height is 8. bottom is gy + 8. Walkway is gy.
-                        # Original: Door top=160 (gy=40), Walkway=192 (gy=48).
-                        # So door should draw from 40 to 47.
+                        # Height is 8. Door rows: gy to gy+7. Walkway at gy+8.
                         ty, tx = gy + dy, gx + dx
                         if 0 <= ty < height and 0 <= tx < width:
                             c = ' '
@@ -97,32 +97,50 @@ class GameBoard(Static):
                                 else:
                                     if obj_state == 0: c = '░'
                                     elif obj_state == 1: c = ' ' if dy >= 4 else '░'
-                                    else: c = ' '
+                                    else:
+                                        # PERSPECTIVE STAIRS for open door
+                                        if dy == 4: c = '_' if dx > 4 else ' '
+                                        elif dy == 5: c = ' ' if dx == 5 else ('\\' if dx == 6 else ' ')
+                                        elif dy == 6: c = ' ' if dx <= 6 else ('\\' if dx == 7 else ' ')
+                                        else: c = ' '
                             grid[ty][tx] = (c, color)
             elif type in ['ladder', 'pole']:
                 char = '#' if type == 'ladder' else '|'
-                for i in range(props['length'] * 2):
+                # Find the lowest walkway this ladder connects to
+                max_w_ty = 0
+                for w in room['objects']:
+                    if w['type'] == 'walkway':
+                        if w['x'] <= obj['x'] <= w['x'] + w['properties']['length'] * 4:
+                            w_ty = py(w['y'])
+                            if w_ty > max_w_ty and w_ty >= gy:
+                                max_w_ty = w_ty
+                                
+                draw_len = props['length'] * 2
+                for i in range(draw_len):
                     ty = gy + i
+                    if max_w_ty > 0 and ty > max_w_ty:
+                        break
                     if 0 <= ty < height and 0 <= gx < width:
-                        if grid[ty][gx][0] == ' ': grid[ty][gx] = (char, floor_color)
+                        grid[ty][gx] = (char, floor_color)
             elif type == 'key':
                 if 0 <= gy + 7 < height: grid[gy+7][gx] = ('k', props['color'])
             elif type == 'lock':
-                if 0 <= gy + 5 < height: grid[gy+5][gx] = ('X', props['color'])
+                # Head level: gy + 3 (if gy is top of 32px door)
+                if 0 <= gy + 3 < height: grid[gy+3][gx] = ('X', props['color'])
             elif type == 'teleport':
-                if 0 <= gy + 3 < height: grid[gy+3][gx] = ('T', (obj_state + 2) % 16)
+                if 0 <= gy + 1 < height: grid[gy+1][gx] = ('T', (obj_state + 2) % 16)
             elif type == 'teleport_target':
                 if 0 <= gy + 7 < height: grid[gy+7][gx] = ('t', props['color'])
             elif type == 'doorbell':
-                if 0 <= gy + 5 < height: grid[gy+5][gx] = ('●', floor_color)
+                if 0 <= gy + 3 < height: grid[gy+3][gx] = ('●', floor_color)
             elif type == 'forcefield_switch':
-                if 0 <= gy + 5 < height:
-                    grid[gy+5][gx] = ('S', 3)
+                if 0 <= gy + 3 < height:
+                    grid[gy+3][gx] = ('S', 3)
                     if obj.get('timer', 0) > 0:
                         status = f"[{obj['timer']}]"
                         for i, c in enumerate(status):
-                            if 0 <= gy+5 < height and 0 <= gx + 1 + i < width:
-                                grid[gy+5][gx+1+i] = (c, 3)
+                            if 0 <= gy+3 < height and 0 <= gx + 1 + i < width:
+                                grid[gy+3][gx+1+i] = (c, 3)
             elif type == 'forcefield':
                 for dy in range(0, 8):
                     ty = gy + dy
@@ -144,17 +162,21 @@ class GameBoard(Static):
                     chars = ["\\", "|", "Y", "/"]
                     for dy in range(8, 24):
                         ty = gy + dy
-                        if 0 <= ty < height and 0 <= gx < width:
-                            if grid[ty][gx][0] == '=': break
-                            grid[ty][gx] = (random.choice(chars), 7)
+                        if 0 <= ty < height:
+                            # 3 characters wide ray
+                            for dx_off in range(-1, 2):
+                                tx = gx + dx_off
+                                if 0 <= tx < width:
+                                    if grid[ty][tx][0] == '=': continue
+                                    grid[ty][tx] = (random.choice(chars), 7)
             elif type == 'lightning_switch':
-                if 0 <= gy + 5 < height:
-                    grid[gy+5][gx] = ('S', 3)
+                if 0 <= gy + 3 < height:
+                    grid[gy+3][gx] = ('S', 3)
                     is_on = lightning_systems.get(str(props.get('system_id', 0)))
                     status = "(ON)" if is_on else "(OFF)"
                     for i, c in enumerate(status):
-                        if 0 <= gy+5 < height and 0 <= gx + 1 + i < width:
-                            grid[gy+5][gx+1+i] = (c, 3)
+                        if 0 <= gy+3 < height and 0 <= gx + 1 + i < width:
+                            grid[gy+3][gx+1+i] = (c, 3)
 
         # 3. Mummies
         for m in state.get('mummies', []):
@@ -166,7 +188,7 @@ class GameBoard(Static):
                         if 0 <= ty < height:
                             grid[ty][mx] = ('O' if dy==0 else ('|' if dy<5 else '^'), 1)
 
-        # 4. Player (3 wide, 6 high, stick-man style)
+        # 4. Player (Stick-man)
         pgx, pgy = px(player['x']), py(player['y'])
         tick = state['tick']
         is_moving = player.get('is_moving', False)
@@ -176,19 +198,14 @@ class GameBoard(Static):
             if 0 <= ty < height and 0 <= tx < width:
                 grid[ty][tx] = (char, col)
 
-        # Head (Centered at pgx)
         safe_set(pgy-5, pgx, 'O', 7)
-        # Torso & Arms
         arm_l, arm_r = '/', '\\'
-        if is_acting: 
-            # Toggle arm direction for wave
-            arm_r = '/' if (tick % 2 == 0) else '\\'
+        if is_acting: arm_r = '/'
         safe_set(pgy-4, pgx-1, arm_l, 6)
         safe_set(pgy-4, pgx,   '|', 6)
         safe_set(pgy-4, pgx+1, arm_r, 6)
         safe_set(pgy-3, pgx, '|', 6)
         safe_set(pgy-2, pgx, '|', 6)
-        # Legs
         leg_l, leg_r = '/', '\\'
         if is_moving and tick % 4 < 2:
             leg_l, leg_r = '(', ')'
@@ -282,4 +299,8 @@ class CreepApp(App):
         yield Header(); yield GameStatus(); yield Vertical(GameBoard()); yield Footer()
 
 if __name__ == "__main__":
-    app = CreepApp(); app.run()
+    try:
+        app = CreepApp()
+        app.run()
+    except Exception:
+        traceback.print_exc(file=sys.stderr)

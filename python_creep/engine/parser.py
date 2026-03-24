@@ -120,7 +120,7 @@ class CastleParser:
             elif func == E_OBJECT_MUMMY:
                 while self.data[offset] != 0:
                     if self._read_word(offset) in VALID_IDS: break
-                    room.objects.append({'type': 'mummy_release', 'x': self.data[offset+5], 'y': self.data[offset+6], 'tomb_x': self.data[offset+3], 'tomb_y': self.data[offset+4]})
+                    room.objects.append({'type': 'mummy_release', 'x': self.data[offset+1], 'y': self.data[offset+2], 'tomb_x': self.data[offset+3], 'tomb_y': self.data[offset+4]})
                     room.objects.append({'type': 'mummy_tomb', 'x': self.data[offset+3], 'y': self.data[offset+4]}); offset += 7
                 offset += 1
             elif func == E_OBJECT_LOCK:

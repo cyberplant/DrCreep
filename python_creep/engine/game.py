@@ -1,18 +1,20 @@
 import time
 import json
 import random
+import sys
+import traceback
+
 from .parser import CastleParser
 from .state import GameState
 from .network import NetworkServer
 
-C64_COLOR_NAMES = {
-    0: "black", 1: "white", 2: "red", 3: "cyan", 4: "purple", 5: "green",
-    6: "blue", 7: "yellow", 8: "orange", 9: "brown", 10: "light_red",
-    11: "dark_grey", 12: "grey", 13: "light_green", 14: "light_blue", 15: "light_grey",
-}
+def log_engine(msg):
+    with open("engine.log", "a") as f:
+        f.write(f"[{time.strftime('%H:%M:%S')}] {msg}\n")
 
 class GameEngine:
     def __init__(self, castle_file):
+        log_engine(f"Starting engine with {castle_file}")
         self.parser = CastleParser(castle_file)
         self.state = GameState(self.parser)
         self.network = NetworkServer(self)
@@ -25,9 +27,10 @@ class GameEngine:
             for obj in room.objects:
                 if obj.type == 'door':
                     obj.state = 0
-                elif obj.type == 'lightning_machine':
+                elif obj.type in ['lightning_machine', 'lightning_switch']:
                     sid = obj.properties.get('system_id', 0)
-                    self.room_states[rid]['lightning'][sid] = True 
+                    if sid not in self.room_states[rid]['lightning']:
+                        self.room_states[rid]['lightning'][sid] = True 
                 elif obj.type == 'forcefield':
                     obj.state = 1
                 elif obj.type == 'mummy_release':
@@ -59,7 +62,12 @@ class GameEngine:
     def start(self):
         self.running = True
         self.network.start()
-        self._main_loop()
+        try:
+            self._main_loop()
+        except Exception:
+            err = traceback.format_exc()
+            log_engine(f"CRITICAL ENGINE ERROR:\n{err}")
+            print(err, file=sys.stderr)
 
     def _main_loop(self):
         tick_duration = 1.0 / self.ticks_per_second
@@ -75,7 +83,6 @@ class GameEngine:
         self.state.current_tick += 1
         for room in self.state.rooms.values():
             for obj in room.objects:
-                # Slower animation (10 ticks)
                 if obj.type == 'door' and 0 < obj.state < 2:
                     if self.state.current_tick % 10 == 0: obj.state += 1
                 if obj.type == 'forcefield_switch' and obj.timer > 0:
@@ -105,7 +112,7 @@ class GameEngine:
             for obj in room.objects:
                 if obj.type == 'lightning_machine':
                     if room_lightning.get(obj.properties.get('system_id', 0)):
-                        if abs(player.x - (obj.x + 2)) < 8 and obj.y <= player.y <= obj.y + 160:
+                        if abs(player.x - (obj.x + 2)) < 12 and obj.y <= player.y <= obj.y + 160:
                             self._reset_player(player); return
                 elif obj.type == 'mummy_release' and obj.state == 0:
                     if abs(player.x - obj.x) < 12 and abs(player.y - (obj.y - 8)) < 16:
@@ -122,10 +129,14 @@ class GameEngine:
             else:
                 for obj in room.objects:
                     if obj.type in ['ladder', 'pole']:
-                        start_y, end_y = obj.y, obj.y + (obj.properties['length'] * 8)
+                        start_y = obj.y
+                        max_w_y = start_y
                         for w in room.objects:
-                            if w.type == 'walkway' and abs(obj.x - w.x) < 40 and w.y > obj.y and w.y < end_y:
-                                end_y = w.y
+                            if w.type == 'walkway' and w.x <= obj.x <= w.x + w.properties.get('length', 0) * 4:
+                                if w.y >= start_y and w.y > max_w_y:
+                                    max_w_y = w.y
+                        end_y = max_w_y if max_w_y > start_y else start_y + (obj.properties['length'] * 8)
+                        
                         if start_y <= player.y <= end_y and abs(player.x - obj.x) < 4:
                             support = obj; break
 
@@ -166,10 +177,14 @@ class GameEngine:
                     player.x = support.x
                     next_vy = player.vy
                     if support.type == 'pole' and next_vy < 0: next_vy = 0
-                    end_y = support.y + (support.properties['length'] * 8)
+                    
+                    max_w_y = support.y
                     for w in room.objects:
-                        if w.type == 'walkway' and abs(support.x - w.x) < 40 and w.y > support.y and w.y < end_y:
-                            end_y = w.y
+                        if w.type == 'walkway' and w.x <= support.x <= w.x + w.properties.get('length', 0) * 4:
+                            if w.y >= support.y and w.y > max_w_y:
+                                max_w_y = w.y
+                    end_y = max_w_y if max_w_y > support.y else support.y + (support.properties['length'] * 8)
+                    
                     player.y = max(support.y, min(end_y, player.y + next_vy))
                     if abs(player.vx) > 0.1:
                         for obj in room.objects:
@@ -192,7 +207,7 @@ class GameEngine:
             'tick': self.state.current_tick,
             'players': [{'id': p.id, 'x': p.x, 'y': p.y, 'room_id': p.room_id, 'keys': p.keys, 'is_moving': getattr(p, 'is_moving', False), 'is_acting': getattr(p, 'is_acting', 0)} for p in self.state.players],
             'mummies': [{'x': m['x'], 'y': m['y'], 'room_id': m['room_id']} for m in self.state.mummies],
-            'rooms': {rid: {'lightning_systems': self.room_states[rid]['lightning'], 'objects': [{'type': o.type, 'x': o.x, 'y': o.y, 'state': o.state, 'timer': o.timer, 'max_timer': o.max_timer, 'properties': o.properties} for o in r.objects]} for rid, r in self.state.rooms.items()}
+            'rooms': {rid: {'lightning_systems': {str(k): v for k, v in self.room_states[rid]['lightning'].items()}, 'objects': [{'type': o.type, 'x': o.x, 'y': o.y, 'state': o.state, 'timer': o.timer, 'max_timer': o.max_timer, 'properties': o.properties} for o in r.objects]} for rid, r in self.state.rooms.items()}
         }
         self.network.broadcast_state(state_dict)
 
@@ -205,7 +220,7 @@ class GameEngine:
         room = self.state.rooms.get(p.room_id)
         if not room: return
         if commands.get('action'):
-            p.is_acting = 10 # 10 ticks of acting animation
+            p.is_acting = 10
             room_doors = [obj for obj in room.objects if obj.type == 'door']
             for obj in room.objects:
                 dist_x, dist_y = abs(p.x - obj.x), abs((p.y - 16) - obj.y)
@@ -223,6 +238,7 @@ class GameEngine:
                             sid = obj.properties.get('system_id', 0)
                             targets = obj.properties.get('targets', [])
                             rs = self.room_states[p.room_id]['lightning']
+                            if sid not in rs: rs[sid] = True
                             rs[sid] = not rs[sid]
                             for tid in targets:
                                 if tid != 0xFF: rs[tid] = rs[sid]

@@ -69,10 +69,21 @@ class TestExporter:
                             grid[ty][tx] = (c, color)
             elif type in ['ladder', 'pole']:
                 char = '#' if type == 'ladder' else '|'
-                for i in range(obj['length'] * 2):
+                max_w_ty = 0
+                for w in room.objects:
+                    if w['type'] == 'walkway':
+                        if w['x'] <= obj['x'] <= w['x'] + w['length'] * 4:
+                            w_ty = py(w['y'])
+                            if w_ty > max_w_ty and w_ty >= gy:
+                                max_w_ty = w_ty
+                                
+                draw_len = obj['length'] * 2
+                for i in range(draw_len):
                     ty = gy + i
+                    if max_w_ty > 0 and ty > max_w_ty:
+                        break
                     if 1 <= ty < 51 and 1 <= gx < 81:
-                        if grid[ty][gx][0] == ' ': grid[ty][gx] = (char, floor_color)
+                        grid[ty][gx] = (char, floor_color)
             elif type == 'key':
                 if 1 <= gy + 7 < 51: grid[gy+7][gx] = ('k', obj['color'])
             elif type == 'lock':
