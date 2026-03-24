@@ -23,6 +23,8 @@ class GameObject:
         self.properties = data
         self.active = True
         self.state = 0 # generic state (e.g. door open/close)
+        self.timer = 0
+        self.max_timer = 0
 
 class RoomState:
     def __init__(self, room_data: RoomData):
@@ -36,6 +38,7 @@ class GameState:
         self.castle_name = castle_parser.name
         self.rooms = {r.number: RoomState(r) for r in castle_parser.rooms}
         self.players = []
+        self.mummies = []
         self.current_tick = 0
         
     def add_player(self, id, start_room_id, start_x, start_y):

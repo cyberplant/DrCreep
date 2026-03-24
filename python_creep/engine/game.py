@@ -5,6 +5,12 @@ from .parser import CastleParser
 from .state import GameState
 from .network import NetworkServer
 
+C64_COLOR_NAMES = {
+    0: "black", 1: "white", 2: "red", 3: "cyan", 4: "purple", 5: "green",
+    6: "blue", 7: "yellow", 8: "orange", 9: "brown", 10: "light_red",
+    11: "dark_grey", 12: "grey", 13: "light_green", 14: "light_blue", 15: "light_grey",
+}
+
 class GameEngine:
     def __init__(self, castle_file):
         self.parser = CastleParser(castle_file)
@@ -13,43 +19,42 @@ class GameEngine:
         self.running = False
         self.ticks_per_second = 50
         
-        # Room-specific global states: rid -> {system_id: bool}
         self.room_states = {}
-
         for rid, room in self.state.rooms.items():
-            self.room_states[rid] = {}
+            self.room_states[rid] = {'lightning': {}}
             for obj in room.objects:
                 if obj.type == 'door':
                     obj.state = 0
                 elif obj.type == 'lightning_machine':
-                    sys_id = obj.properties.get('system_id', 0)
-                    self.room_states[rid][sys_id] = True # Default ON
+                    sid = obj.properties.get('system_id', 0)
+                    self.room_states[rid]['lightning'][sid] = True 
+                elif obj.type == 'forcefield':
+                    obj.state = 1
+                elif obj.type == 'mummy_release':
+                    obj.state = 0
 
         start_room_idx = self.parser.data[3]
-        start_door_id = self.parser.data[5] 
-        if start_room_idx >= len(self.state.rooms):
-            start_room_idx = 0
+        start_door_idx = self.parser.data[5] 
+        if start_room_idx >= len(self.state.rooms): start_room_idx = 0
             
-        start_x, start_y = 20, 100
+        start_x, start_y = 20, 192
         room = self.state.rooms.get(start_room_idx)
         if room:
             found = False
             doors_in_room = [obj for obj in room.objects if obj.type == 'door']
-            if 0 <= start_door_id < len(doors_in_room):
-                obj = doors_in_room[start_door_id]
-                start_x = obj.x + 10
-                start_y = obj.y + 32
-                obj.state = 2
-                found = True
+            if 0 <= start_door_idx < len(doors_in_room):
+                obj = doors_in_room[start_door_idx]
+                start_x, start_y, obj.state, found = obj.x + 10, obj.y + 32, 2, True
             if not found:
                 for obj in room.objects:
                     if obj.type == 'walkway':
-                        start_x = obj.x + 4
-                        start_y = obj.y
-                        break
+                        start_x, start_y = obj.x + 4, obj.y; break
                     
-        p = self.state.add_player(0, start_room_idx, start_x, start_y)
+        self.state.add_player(0, start_room_idx, start_x, start_y)
+        p = self.state.players[0]
         p.move_mode = 'walkway'
+        p.is_moving = False
+        p.is_acting = 0
 
     def start(self):
         self.running = True
@@ -70,104 +75,106 @@ class GameEngine:
         self.state.current_tick += 1
         for room in self.state.rooms.values():
             for obj in room.objects:
+                # Slower animation (10 ticks)
                 if obj.type == 'door' and 0 < obj.state < 2:
-                    if self.state.current_tick % 5 == 0:
-                        obj.state += 1
+                    if self.state.current_tick % 10 == 0: obj.state += 1
+                if obj.type == 'forcefield_switch' and obj.timer > 0:
+                    if self.state.current_tick % self.ticks_per_second == 0:
+                        obj.timer -= 1
+                        if obj.timer == 0:
+                            for fobj in room.objects:
+                                if fobj.type == 'forcefield': fobj.state = 1
+
+        for m in self.state.mummies:
+            target_p = next((p for p in self.state.players if p.room_id == m['room_id']), None)
+            if target_p:
+                if self.state.current_tick % 3 == 0:
+                    if m['x'] < target_p.x: m['x'] += 1
+                    elif m['x'] > target_p.x: m['x'] -= 1
+            for p in self.state.players:
+                if p.room_id == m['room_id'] and abs(p.x - m['x']) < 8 and abs(p.y - m['y']) < 8:
+                    self._reset_player(p)
 
         for player in self.state.players:
             room = self.state.rooms.get(player.room_id)
             if not room: continue
+            
+            if player.is_acting > 0: player.is_acting -= 1
 
-            # Lightning collision check
-            room_sys_states = self.room_states.get(player.room_id, {})
+            room_lightning = self.room_states[player.room_id]['lightning']
             for obj in room.objects:
                 if obj.type == 'lightning_machine':
-                    sys_id = obj.properties.get('system_id', 0)
-                    if room_sys_states.get(sys_id):
-                        # Doubled ray height: ~80 px (10 chars)
-                        lx_start, lx_end = obj.x - 4, obj.x + 8
-                        ly_start, ly_end = obj.y, obj.y + 80
-                        
-                        py_top = player.y - 32
-                        py_bottom = player.y
-                        
-                        if lx_start <= player.x <= lx_end and ly_start <= py_bottom and py_top <= ly_end:
-                            print(f"[{self.state.castle_name}] Player {player.id} disintegrated in Room {player.room_id}!")
-                            self._reset_player(player)
-                            return
+                    if room_lightning.get(obj.properties.get('system_id', 0)):
+                        if abs(player.x - (obj.x + 2)) < 8 and obj.y <= player.y <= obj.y + 160:
+                            self._reset_player(player); return
+                elif obj.type == 'mummy_release' and obj.state == 0:
+                    if abs(player.x - obj.x) < 12 and abs(player.y - (obj.y - 8)) < 16:
+                        obj.state = 1
+                        self.state.mummies.append({'x': obj.properties['tomb_x'] + 12, 'y': obj.properties['tomb_y'] + 32, 'room_id': player.room_id})
 
             support = None
             if player.move_mode == 'walkway':
                 for obj in room.objects:
                     if obj.type == 'walkway':
-                        start_x = obj.x
-                        end_x = obj.x + (obj.properties['length'] * 4)
+                        start_x, end_x = obj.x, obj.x + (obj.properties['length'] * 4)
                         if start_x <= player.x <= end_x and abs(player.y - obj.y) < 4:
-                            support = obj
-                            break
+                            support = obj; break
             else:
                 for obj in room.objects:
                     if obj.type in ['ladder', 'pole']:
-                        start_y = obj.y
-                        end_y = obj.y + (obj.properties['length'] * 8)
+                        start_y, end_y = obj.y, obj.y + (obj.properties['length'] * 8)
+                        for w in room.objects:
+                            if w.type == 'walkway' and abs(obj.x - w.x) < 40 and w.y > obj.y and w.y < end_y:
+                                end_y = w.y
                         if start_y <= player.y <= end_y and abs(player.x - obj.x) < 4:
-                            support = obj
-                            break
+                            support = obj; break
+
+            player.is_moving = (abs(player.vx) > 0.1 or abs(player.vy) > 0.1)
 
             if support:
                 if player.move_mode == 'walkway':
                     player.y = support.y
                     next_x = player.x + player.vx
-                    min_scr_x, max_scr_x = 16, 168
-                    start_x = max(min_scr_x, support.x)
-                    end_x = min(max_scr_x, support.x + (support.properties['length'] * 4))
-                    player.x = max(start_x, min(next_x, end_x))
+                    min_scr_x, max_scr_x = 16, 172
+                    for obj in room.objects:
+                        if obj.type == 'forcefield' and obj.state == 1:
+                            if abs(player.y - obj.y) < 24:
+                                if player.x < obj.x and next_x >= obj.x - 4: next_x = obj.x - 4
+                                elif player.x > obj.x and next_x <= obj.x + 4: next_x = obj.x + 4
+                    player.x = max(max(min_scr_x, support.x), min(min(max_scr_x, support.x + (support.properties['length'] * 4)), next_x))
                     
                     if player.vy < -0.1 and (self.state.current_tick - player.last_transition_tick) > 50:
                         for obj in room.objects:
                             if obj.type == 'door' and obj.state == 2:
                                 if abs(player.x - (obj.x + 10)) < 12 and abs(player.y - (obj.y + 32)) < 8:
-                                    target_room_id = obj.properties['link_room']
-                                    target_door_idx = obj.properties['link_door']
+                                    target_room_id, target_door_idx = obj.properties['link_room'], obj.properties['link_door']
                                     target_room = self.state.rooms.get(target_room_id)
                                     if target_room:
                                         target_doors = [t for t in target_room.objects if t.type == 'door']
                                         if 0 <= target_door_idx < len(target_doors):
                                             tobj = target_doors[target_door_idx]
-                                            player.room_id = target_room_id
-                                            player.x = tobj.x + 10
-                                            player.y = tobj.y + 32
-                                            tobj.state = 2
-                                            player.last_transition_tick = self.state.current_tick
+                                            player.room_id, player.x, player.y = target_room_id, tobj.x + 10, tobj.y + 32
+                                            tobj.state, player.last_transition_tick = 2, self.state.current_tick
                                             return
-                                    break
-                    
                     if abs(player.vy) > 0.1:
                         for obj in room.objects:
-                            if obj.type in ['ladder', 'pole']:
-                                if abs(player.x - obj.x) < 4:
-                                    if player.vy > 0 and abs(player.y - (obj.y + obj.properties['length']*8)) < 4:
-                                        continue
-                                    if obj.type == 'pole' and player.vy < 0:
-                                        continue
-                                    player.move_mode = 'ladder'
-                                    player.x = obj.x
-                                    break
+                            if obj.type in ['ladder', 'pole'] and abs(player.x - obj.x) < 4:
+                                if player.vy > 0 and abs(player.y - (obj.y + obj.properties['length']*8)) < 4: continue
+                                if obj.type == 'pole' and player.vy < 0: continue
+                                player.move_mode, player.x = 'ladder', obj.x; break
                 else:
                     player.x = support.x
                     next_vy = player.vy
                     if support.type == 'pole' and next_vy < 0: next_vy = 0
-                    next_y = player.y + next_vy
-                    start_y, end_y = max(0, support.y), min(192, support.y + (support.properties['length'] * 8))
-                    player.y = max(start_y, min(next_y, end_y))
-                    
+                    end_y = support.y + (support.properties['length'] * 8)
+                    for w in room.objects:
+                        if w.type == 'walkway' and abs(support.x - w.x) < 40 and w.y > support.y and w.y < end_y:
+                            end_y = w.y
+                    player.y = max(support.y, min(end_y, player.y + next_vy))
                     if abs(player.vx) > 0.1:
                         for obj in room.objects:
-                            if obj.type == 'walkway':
-                                if abs(player.y - obj.y) < 4:
-                                    player.move_mode = 'walkway'
-                                    player.y = obj.y
-                                    break
+                            if obj.type == 'walkway' and abs(player.y - obj.y) < 4:
+                                player.move_mode, player.y = 'walkway', obj.y; break
             
             player.vx *= 0.5
             player.vy *= 0.5
@@ -175,68 +182,67 @@ class GameEngine:
     def _reset_player(self, player):
         room = self.state.rooms.get(player.room_id)
         if room:
-            # Return to the door player most likely came from (open one)
             for obj in room.objects:
                 if obj.type == 'door' and obj.state == 2:
-                    player.x = obj.x + 10
-                    player.y = obj.y + 32
-                    player.vx = 0
-                    player.vy = 0
-                    player.move_mode = 'walkway'
+                    player.x, player.y, player.vx, player.vy, player.move_mode = obj.x + 10, obj.y + 32, 0, 0, 'walkway'
                     break
 
     def _broadcast(self):
         state_dict = {
             'tick': self.state.current_tick,
-            'players': [{'id': p.id, 'x': p.x, 'y': p.y, 'room_id': p.room_id} for p in self.state.players],
-            'rooms': {
-                rid: {
-                    'lightning_systems': self.room_states[rid],
-                    'objects': [{'type': o.type, 'x': o.x, 'y': o.y, 'state': o.state, 'properties': o.properties} for o in r.objects]
-                } for rid, r in self.state.rooms.items()
-            }
+            'players': [{'id': p.id, 'x': p.x, 'y': p.y, 'room_id': p.room_id, 'keys': p.keys, 'is_moving': getattr(p, 'is_moving', False), 'is_acting': getattr(p, 'is_acting', 0)} for p in self.state.players],
+            'mummies': [{'x': m['x'], 'y': m['y'], 'room_id': m['room_id']} for m in self.state.mummies],
+            'rooms': {rid: {'lightning_systems': self.room_states[rid]['lightning'], 'objects': [{'type': o.type, 'x': o.x, 'y': o.y, 'state': o.state, 'timer': o.timer, 'max_timer': o.max_timer, 'properties': o.properties} for o in r.objects]} for rid, r in self.state.rooms.items()}
         }
         self.network.broadcast_state(state_dict)
 
     def handle_input(self, player_id, commands):
         p = self.state.players[player_id]
-        speed = 2.0
-        if commands.get('left'): p.vx = -speed
-        if commands.get('right'): p.vx = speed
-        if commands.get('up'): p.vy = -speed
-        if commands.get('down'): p.vy = speed
-        
+        if commands.get('left'): p.vx = -2.0
+        if commands.get('right'): p.vx = 2.0
+        if commands.get('up'): p.vy = -2.0
+        if commands.get('down'): p.vy = 2.0
+        room = self.state.rooms.get(p.room_id)
+        if not room: return
         if commands.get('action'):
-            action_found = False
-            room = self.state.rooms.get(p.room_id)
-            print(f"[{self.state.castle_name}] Room {p.room_id} | Player {player_id} pressed button at {p.x:.1f},{p.y:.1f}")
-            doors_in_room = [obj for obj in room.objects if obj.type == 'door']
+            p.is_acting = 10 # 10 ticks of acting animation
+            room_doors = [obj for obj in room.objects if obj.type == 'door']
             for obj in room.objects:
-                if obj.type == 'doorbell':
-                    dist_x, dist_y = abs(p.x - obj.x), abs((p.y - 16) - obj.y)
-                    if dist_x < 12 and dist_y < 24:
+                dist_x, dist_y = abs(p.x - obj.x), abs((p.y - 16) - obj.y)
+                if dist_x < 16 and dist_y < 32:
+                    if obj.type == 'doorbell':
                         target_id = obj.properties.get('target_door_idx')
-                        if 0 <= target_id < len(doors_in_room):
-                            dobj = doors_in_room[target_id]
-                            if dobj.state == 0: dobj.state = 1
-                            action_found = True
-                elif obj.type == 'lightning_switch':
-                    dist_x, dist_y = abs(p.x - obj.x), abs((p.y - 16) - obj.y)
-                    if dist_x < 12 and dist_y < 24:
-                        sys_id = obj.properties.get('system_id', 0)
-                        room_sys = self.room_states[p.room_id]
-                        if sys_id not in room_sys and 0 in room_sys:
-                            sys_id = 0 # Fallback to 0 if 1-based index not found
-                        
-                        if sys_id in room_sys:
-                            room_sys[sys_id] = not room_sys[sys_id]
-                            print(f"    Action: lightning system {sys_id} toggled to {room_sys[sys_id]}")
-                            action_found = True
-            if not action_found:
-                print(f"    Action: none")
+                        if 0 <= target_id < len(room_doors):
+                            if room_doors[target_id].state == 0: room_doors[target_id].state = 1
+                    elif obj.type in ['lightning_switch', 'forcefield_switch']:
+                        if obj.type == 'forcefield_switch' or p.room_id == 4:
+                            obj.timer = 8
+                            for fobj in room.objects:
+                                if fobj.type == 'forcefield': fobj.state = 0
+                        else:
+                            sid = obj.properties.get('system_id', 0)
+                            targets = obj.properties.get('targets', [])
+                            rs = self.room_states[p.room_id]['lightning']
+                            rs[sid] = not rs[sid]
+                            for tid in targets:
+                                if tid != 0xFF: rs[tid] = rs[sid]
+                    elif obj.type == 'key':
+                        p.keys.append(obj.properties['color']); room.objects.remove(obj)
+                    elif obj.type == 'lock':
+                        color = obj.properties.get('color', 0)
+                        if color in p.keys:
+                            target_id = obj.properties.get('target_door_idx')
+                            if 0 <= target_id < len(room_doors):
+                                if room_doors[target_id].state == 0:
+                                    room_doors[target_id].state = 1; p.keys.remove(color); break
+                    elif obj.type == 'teleport':
+                        tc = obj.state
+                        for rid, rstate in self.state.rooms.items():
+                            for tobj in rstate.objects:
+                                if tobj.type == 'teleport_target' and tobj.properties['color'] == tc:
+                                    p.room_id, p.x, p.y = rid, tobj.x, tobj.y; return
 
 if __name__ == "__main__":
     import sys
     castle = sys.argv[1] if len(sys.argv) > 1 else "run/data/castles/ZTUTORIAL"
-    engine = GameEngine(castle)
-    engine.start()
+    engine = GameEngine(castle); engine.start()
