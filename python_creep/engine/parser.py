@@ -140,10 +140,27 @@ class CastleParser:
                     room.objects.append({'type': 'text', 'x': x, 'y': y, 'text': text, 'color': col})
                 offset += 1
             elif func in [E_OBJECT_RAY_GUN, E_OBJECT_TRAP_DOOR, E_OBJECT_CONVEYOR, E_OBJECT_FRANKENSTEIN]:
-                name = {E_OBJECT_RAY_GUN: 'raygun', E_OBJECT_TRAP_DOOR: 'trapdoor', E_OBJECT_CONVEYOR: 'conveyor', E_OBJECT_FRANKENSTEIN: 'frankie'}[func]
-                while self.data[offset] != 0x80:
+                while (self.data[offset] & 0x80) == 0:
                     if self._read_word(offset) in VALID_IDS: break
-                    room.objects.append({'type': name, 'x': self.data[offset+1], 'y': self.data[offset+2]}); offset += 7 if func in [E_OBJECT_RAY_GUN, E_OBJECT_FRANKENSTEIN] else 5
+                    flags = self.data[offset]
+                    if func == E_OBJECT_TRAP_DOOR:
+                        room.objects.append({'type': 'trapdoor', 'x': self.data[offset+1], 'y': self.data[offset+2], 'is_open': (flags & 0x40) != 0})
+                        room.objects.append({'type': 'trapdoor_switch', 'x': self.data[offset+3], 'y': self.data[offset+4], 'target_idx': len(room.objects)-1})
+                        offset += 5
+                    elif func == E_OBJECT_CONVEYOR:
+                        state = 1 # OFF
+                        if (flags & 0x10) != 0: # CONVEYOR_TURNED_ON ? Wait, flags in C++: 0x10 is ON?
+                            state = 2 if (flags & 0x20) != 0 else 0 # 0=LEFT, 2=RIGHT
+                        room.objects.append({'type': 'conveyor', 'x': self.data[offset+1], 'y': self.data[offset+2], 'state': state})
+                        room.objects.append({'type': 'conveyor_switch', 'x': self.data[offset+3], 'y': self.data[offset+4], 'target_idx': len(room.objects)-1})
+                        offset += 5
+                    elif func == E_OBJECT_RAY_GUN:
+                        room.objects.append({'type': 'raygun', 'x': self.data[offset+1], 'y': self.data[offset+2]})
+                        room.objects.append({'type': 'raygun_switch', 'x': self.data[offset+3], 'y': self.data[offset+4]})
+                        offset += 7
+                    elif func == E_OBJECT_FRANKENSTEIN:
+                        room.objects.append({'type': 'frankie', 'x': self.data[offset+1], 'y': self.data[offset+2], 'tomb_x': self.data[offset+3], 'tomb_y': self.data[offset+4]})
+                        offset += 7
                 offset += 1
             elif func == E_OBJECT_FORCEFIELD:
                 while self.data[offset] != 0:

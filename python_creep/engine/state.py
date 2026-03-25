@@ -14,6 +14,10 @@ class Player:
         self.facing_left = False
         self.move_mode = 'walkway' # 'walkway' or 'ladder'
         self.last_transition_tick = 0
+        self.is_teleporting = 0
+        self.target_room_id = 0
+        self.target_x = 0
+        self.target_y = 0
 
 class GameObject:
     def __init__(self, data):
@@ -39,7 +43,10 @@ class GameState:
         self.rooms = {r.number: RoomState(r) for r in castle_parser.rooms}
         self.players = []
         self.mummies = []
+        self.frankies = []
+        self.projectiles = []
         self.current_tick = 0
+        self.victory = False
         
     def add_player(self, id, start_room_id, start_x, start_y):
         p = Player(id, start_x, start_y)

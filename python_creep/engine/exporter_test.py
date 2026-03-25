@@ -111,6 +111,28 @@ class TestExporter:
                         if 1 <= ty < 51 and 1 <= tx < 81: grid[ty][tx] = ('#', 2)
             elif type == 'lightning_machine':
                 if 1 <= gy + 7 < 51: grid[gy+7][gx] = ('L', 3)
+            elif type == 'trapdoor':
+                if obj.get('is_open'):
+                    for dx in range(4):
+                        if 1 <= gy < 51 and 1 <= gx + dx < 81: grid[gy][gx+dx] = (' ', 1)
+            elif type == 'trapdoor_switch':
+                if 1 <= gy < 51 and 1 <= gx < 81: grid[gy][gx] = ('o', 3)
+            elif type == 'conveyor':
+                for dx in range(10):
+                    if 1 <= gy < 51 and 1 <= gx + dx < 81: grid[gy][gx+dx] = ('-', 6)
+            elif type == 'conveyor_switch':
+                if 1 <= gy-3 < 51:
+                    for i, c in enumerate("<< O >>"):
+                        if 1 <= gx + i < 81: grid[gy-3][gx+i] = (c, 2)
+            elif type == 'raygun':
+                if 1 <= gy-3 < 51:
+                    for i, c in enumerate(">====>"):
+                        if 1 <= gx + i < 81: grid[gy-3][gx+i] = (c, 2)
+            elif type == 'raygun_switch':
+                if 1 <= gy-5 < 51:
+                    for dy, row in enumerate([" ^ ", " O ", " v "]):
+                        for i, c in enumerate(row):
+                            if 1 <= gy - 5 + dy < 51 and 1 <= gx + i < 81: grid[gy - 5 + dy][gx+i] = (c, 3)
             elif type == 'lightning_switch':
                 if 1 <= gy + 5 < 51: grid[gy+5][gx] = ('S', 3)
 
