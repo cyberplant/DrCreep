@@ -39,6 +39,9 @@ class GameEngine:
                     obj.state = 1 if obj.properties.get('is_open') else 0
                 elif obj.type == 'conveyor':
                     obj.state = obj.properties.get('state', 1)
+                elif obj.type == 'raygun':
+                    obj.initial_y = obj.y
+                    obj.direction = 1
 
         start_room_idx = self.parser.data[3]
         start_door_idx = self.parser.data[5] 
@@ -95,51 +98,50 @@ class GameEngine:
                         if obj.timer == 0:
                             for fobj in room.objects:
                                 if fobj.type == 'forcefield': fobj.state = 1
-                if obj.type == 'raygun' and obj.timer > 0:
-                    obj.timer -= 1
+                if obj.type == 'raygun':
+                    if obj.timer > 0: obj.timer -= 1
+                    if self.state.current_tick % 2 == 0:
+                        obj.y += obj.direction * 1
+                        if obj.y >= obj.initial_y + 32: obj.direction = -1
+                        elif obj.y <= obj.initial_y: obj.direction = 1
 
         for m in self.state.mummies:
             target_p = next((p for p in self.state.players if p.room_id == m['room_id']), None)
-            if target_p:
+            m['is_moving'] = False
+            if target_p and abs(target_p.y - m['y']) < 16:
                 if self.state.current_tick % 3 == 0:
+                    m['is_moving'] = True
                     if m['x'] < target_p.x: m['x'] += 1
                     elif m['x'] > target_p.x: m['x'] -= 1
             for p in self.state.players:
-                if p.room_id == m['room_id'] and abs(p.x - m['x']) < 8 and abs(p.y - m['y']) < 8:
+                if p.room_id == m['room_id'] and abs(p.x - m['x']) < 12 and abs(p.y - m['y']) < 12:
                     self._reset_player(p)
                     
         for f in self.state.frankies:
             room = self.state.rooms.get(f['room_id'])
             target_p = next((p for p in self.state.players if p.room_id == f['room_id']), None)
-            
-            # Simple AI with stair usage
+            f['is_moving'] = True
             if target_p:
                 dx = target_p.x - f['x']
                 dy = target_p.y - f['y']
-                
                 if abs(dy) < 8:
                     f['vx'] = 0.5 if dx > 0 else -0.5
                     f['move_mode'] = 'walkway'
                 else:
-                    # Try to find a ladder/pole
                     on_ladder = False
                     for obj in room.objects:
                         if obj.type in ('ladder', 'pole') and abs(f['x'] - obj.x) < 4:
-                            if dy > 0: # Go down
-                                f['y'] += 1
-                            else: # Go up
+                            if dy > 0: f['y'] += 1
+                            else:
                                 if obj.type == 'ladder': f['y'] -= 1
                             on_ladder = True; break
-                    if not on_ladder:
-                        f['vx'] = 0.5 if dx > 0 else -0.5
-            
+                    if not on_ladder: f['vx'] = 0.5 if dx > 0 else -0.5
             if f.get('move_mode') != 'ladder':
                 f['x'] += f['vx']
-                if f['x'] < 30: f['vx'] = 0.5
-                if f['x'] > 160: f['vx'] = -0.5
-                
+                if f['x'] < 20: f['vx'] = 0.5
+                if f['x'] > 180: f['vx'] = -0.5
             for p in self.state.players:
-                if p.room_id == f['room_id'] and abs(p.x - f['x']) < 8 and abs(p.y - f['y']) < 8:
+                if p.room_id == f['room_id'] and abs(p.x - f['x']) < 12 and abs(p.y - f['y']) < 12:
                     self._reset_player(p)
                     
         active_projectiles = []
@@ -147,25 +149,20 @@ class GameEngine:
             proj['x'] += proj['vx']
             hit = False
             for p in self.state.players:
-                if p.room_id == proj['room_id'] and abs(p.x - proj['x']) < 8 and abs(p.y - proj['y']) < 8:
-                    self._reset_player(p)
-                    hit = True
-            if not hit and 0 <= proj['x'] <= 320:
-                active_projectiles.append(proj)
+                if p.room_id == proj['room_id'] and abs(p.x - proj['x']) < 12 and abs(p.y - proj['y']) < 12:
+                    self._reset_player(p); hit = True
+            if not hit and 0 <= proj['x'] <= 320: active_projectiles.append(proj)
         self.state.projectiles = active_projectiles
 
         for player in self.state.players:
             if player.is_teleporting > 0:
                 player.is_teleporting -= 1
                 if player.is_teleporting == 0:
-                    player.room_id = player.target_room_id
-                    player.x = player.target_x
-                    player.y = player.target_y
+                    player.room_id, player.x, player.y = player.target_room_id, player.target_x, player.target_y
                 continue
 
             room = self.state.rooms.get(player.room_id)
             if not room: continue
-            
             if player.is_acting > 0: player.is_acting -= 1
 
             room_lightning = self.room_states[player.room_id]['lightning']
@@ -175,14 +172,13 @@ class GameEngine:
                         if abs(player.x - (obj.x + 2)) < 12 and obj.y <= player.y <= obj.y + 160:
                             self._reset_player(player); return
                 elif obj.type == 'mummy_release' and obj.state == 0:
-                    # Check at player head/body level
-                    if abs(player.x - obj.x) < 12 and abs((player.y - 16) - obj.y) < 16:
+                    if abs(player.x - obj.x) < 16 and abs((player.y - 16) - obj.y) < 32:
                         obj.state = 1
-                        self.state.mummies.append({'x': obj.properties['tomb_x'] + 12, 'y': obj.properties['tomb_y'] + 32, 'room_id': player.room_id})
+                        self.state.mummies.append({'x': obj.properties['tomb_x'] + 12, 'y': obj.properties['tomb_y'] + 32, 'room_id': player.room_id, 'is_moving': False})
                 elif obj.type == 'frankie' and obj.state == 0:
-                    if abs(player.y - (obj.y + 32)) < 16:
+                    if abs(player.y - (obj.y + 32)) < 24:
                         obj.state = 1
-                        self.state.frankies.append({'x': obj.x, 'y': obj.y + 32, 'room_id': player.room_id, 'vx': 0.5})
+                        self.state.frankies.append({'x': obj.x + 12, 'y': obj.y + 32, 'room_id': player.room_id, 'vx': 0.5, 'is_moving': True})
                 elif obj.type == 'raygun':
                     if abs(player.y - obj.y) < 16 and obj.timer == 0:
                         obj.timer = 100
@@ -193,14 +189,13 @@ class GameEngine:
             if player.move_mode == 'walkway':
                 for obj in room.objects:
                     if obj.type == 'trapdoor_switch':
-                        if abs(player.x - obj.x) < 8 and abs((player.y-16) - obj.y) < 16:
+                        if abs(player.x - obj.x) < 12 and abs((player.y-16) - obj.y) < 24:
                             if not getattr(player, 'on_trapdoor_switch', False):
-                                target_id = obj.properties.get('target_idx')
-                                if 0 <= target_id < len(room.objects):
-                                    room.objects[target_id].state = 1 if room.objects[target_id].state == 0 else 0
+                                tid = obj.properties.get('target_idx')
+                                if 0 <= tid < len(room.objects):
+                                    room.objects[tid].state = 1 if room.objects[tid].state == 0 else 0
                             player.on_trapdoor_switch = True
-                        else:
-                            player.on_trapdoor_switch = False
+                        else: player.on_trapdoor_switch = False
 
                 for obj in room.objects:
                     if obj.type == 'walkway':
@@ -216,8 +211,12 @@ class GameEngine:
                                 for c in room.objects:
                                     if c.type == 'conveyor':
                                         if abs(c.y - (obj.y - 32)) < 8 and c.x - 4 <= player.x <= c.x + 36:
-                                            if c.state == 0: player.vx -= 1.5
-                                            elif c.state == 2: player.vx += 1.5
+                                            if c.state == 0: # LEFT
+                                                if player.vx > 0: player.vx = 0
+                                                player.vx -= 1.5
+                                            elif c.state == 2: # RIGHT
+                                                if player.vx < 0: player.vx = 0
+                                                player.vx += 1.5
                                 break
             else:
                 for obj in room.objects:
@@ -226,13 +225,14 @@ class GameEngine:
                         max_w_y = start_y
                         for w in room.objects:
                             if w.type == 'walkway' and w.x <= obj.x <= w.x + w.properties.get('length', 0) * 4:
-                                if w.y >= start_y and w.y > max_w_y:
-                                    max_w_y = w.y
+                                if w.y >= start_y and w.y > max_w_y: max_w_y = w.y
                         end_y = max_w_y if max_w_y > start_y else start_y + (obj.properties['length'] * 8)
                         if start_y <= player.y <= end_y and abs(player.x - obj.x) < 4:
                             support = obj; break
 
             player.is_moving = (abs(player.vx) > 0.1 or abs(player.vy) > 0.1)
+            if abs(player.vx) > 0.1:
+                player.facing_left = (player.vx < 0)
 
             if support:
                 if player.move_mode == 'walkway':
@@ -249,10 +249,9 @@ class GameEngine:
                     if player.vy < -0.1 and (self.state.current_tick - player.last_transition_tick) > 50:
                         for obj in room.objects:
                             if obj.type == 'door' and obj.state == 2:
-                                if abs(player.x - (obj.x + 10)) < 12 and abs(player.y - (obj.y + 32)) < 12:
+                                if abs(player.x - (obj.x + 10)) < 16 and abs(player.y - (obj.y + 32)) < 16:
                                     if obj.properties.get('is_exit'):
-                                        self.state.victory = True
-                                        return
+                                        self.state.victory = True; return
                                     target_room_id, target_door_idx = obj.properties['link_room'], obj.properties['link_door']
                                     target_room = self.state.rooms.get(target_room_id)
                                     if target_room:
@@ -275,8 +274,7 @@ class GameEngine:
                     max_w_y = support.y
                     for w in room.objects:
                         if w.type == 'walkway' and w.x <= support.x <= w.x + w.properties.get('length', 0) * 4:
-                            if w.y >= support.y and w.y > max_w_y:
-                                max_w_y = w.y
+                            if w.y >= support.y and w.y > max_w_y: max_w_y = w.y
                     end_y = max_w_y if max_w_y > support.y else support.y + (support.properties['length'] * 8)
                     player.y = max(support.y, min(end_y, player.y + next_vy))
                     if abs(player.vx) > 0.1:
@@ -299,9 +297,9 @@ class GameEngine:
         state_dict = {
             'tick': self.state.current_tick,
             'victory': self.state.victory,
-            'players': [{'id': p.id, 'x': p.x, 'y': p.y, 'room_id': p.room_id, 'keys': p.keys, 'is_moving': getattr(p, 'is_moving', False), 'is_acting': getattr(p, 'is_acting', 0), 'is_teleporting': getattr(p, 'is_teleporting', 0)} for p in self.state.players],
-            'mummies': [{'x': m['x'], 'y': m['y'], 'room_id': m['room_id']} for m in self.state.mummies],
-            'frankies': [{'x': f['x'], 'y': f['y'], 'room_id': f['room_id']} for f in self.state.frankies],
+            'players': [{'id': p.id, 'x': p.x, 'y': p.y, 'room_id': p.room_id, 'keys': p.keys, 'is_moving': getattr(p, 'is_moving', False), 'is_acting': getattr(p, 'is_acting', 0), 'is_teleporting': getattr(p, 'is_teleporting', 0), 'facing_left': getattr(p, 'facing_left', False)} for p in self.state.players],
+            'mummies': [{'x': m['x'], 'y': m['y'], 'room_id': m['room_id'], 'is_moving': m.get('is_moving', False), 'facing_left': m.get('facing_left', False)} for m in self.state.mummies],
+            'frankies': [{'x': f['x'], 'y': f['y'], 'room_id': f['room_id'], 'is_moving': f.get('is_moving', False), 'facing_left': f.get('facing_left', False)} for f in self.state.frankies],
             'projectiles': [{'x': p['x'], 'y': p['y'], 'room_id': p['room_id']} for p in self.state.projectiles],
             'rooms': {rid: {'lightning_systems': {str(k): v for k, v in self.room_states[rid]['lightning'].items()}, 'objects': [{'type': o.type, 'x': o.x, 'y': o.y, 'state': o.state, 'timer': o.timer, 'max_timer': o.max_timer, 'properties': o.properties} for o in r.objects]} for rid, r in self.state.rooms.items()}
         }
@@ -313,15 +311,29 @@ class GameEngine:
             return
         if self.state.victory: return
         p = self.state.players[player_id]
+        if commands:
+            print(f"[INPUT] P{player_id} at {p.x:.1f},{p.y:.1f} in Room {p.room_id}: {commands}")
         room = self.state.rooms.get(p.room_id)
         if not room: return
 
-        # Teleport Color Cycle
         if p.move_mode == 'walkway':
             for obj in room.objects:
-                if obj.type == 'teleport' and abs(p.x - obj.x) < 8 and abs(p.y - (obj.y + 32)) < 16:
-                    if commands.get('up'): obj.state = (obj.state - 1) % 16; return
-                    if commands.get('down'): obj.state = (obj.state + 1) % 16; return
+                if obj.type == 'teleport' and abs(p.x - obj.x) < 12 and abs(p.y - (obj.y + 32)) < 16:
+                    target_colors = sorted(list(set(o.properties['color'] for o in room.objects if o.type == 'teleport_target')))
+                    if not target_colors: target_colors = [0]
+                    cur_idx = target_colors.index(obj.state) if obj.state in target_colors else 0
+                    if commands.get('up'): obj.state = target_colors[(cur_idx - 1) % len(target_colors)]; return
+                    if commands.get('down'): obj.state = target_colors[(cur_idx + 1) % len(target_colors)]; return
+                if obj.type == 'raygun_switch' and abs(p.x - obj.x) < 12 and abs((p.y-16) - obj.y) < 32:
+                    for rgun in room.objects:
+                        if rgun.type == 'raygun':
+                            if commands.get('up'): rgun.y -= 2; return
+                            if commands.get('down'): rgun.y += 2; return
+                            if commands.get('action'):
+                                if rgun.timer == 0:
+                                    rgun.timer = 100
+                                    self.state.projectiles.append({'x': rgun.x + 16, 'y': rgun.y, 'vx': 3.0, 'room_id': p.room_id})
+                                return
 
         if commands.get('left'): p.vx = -2.0
         if commands.get('right'): p.vx = 2.0
@@ -355,7 +367,7 @@ class GameEngine:
                         target_id = obj.properties.get('target_idx')
                         if 0 <= target_id < len(room.objects):
                             c_obj = room.objects[target_id]
-                            states = [0, 1, 2, 1] # LEFT, OFF, RIGHT, OFF
+                            states = [0, 1, 2, 1]
                             cur_idx = states.index(c_obj.state) if c_obj.state in states else 1
                             c_obj.state = states[(cur_idx + 1) % 4]
                     elif obj.type == 'trapdoor_switch':
