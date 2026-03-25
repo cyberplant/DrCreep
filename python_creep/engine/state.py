@@ -1,4 +1,5 @@
 from .parser import RoomData
+from .components import create_component
 
 class Player:
     def __init__(self, id, start_x, start_y):
@@ -19,21 +20,10 @@ class Player:
         self.target_x = 0
         self.target_y = 0
 
-class GameObject:
-    def __init__(self, data):
-        self.type = data['type']
-        self.x = data['x']
-        self.y = data['y']
-        self.properties = data
-        self.active = True
-        self.state = 0 # generic state (e.g. door open/close)
-        self.timer = 0
-        self.max_timer = 0
-
 class RoomState:
     def __init__(self, room_data: RoomData):
         self.id = room_data.number
-        self.objects = [GameObject(o) for o in room_data.objects]
+        self.objects = [create_component(o) for o in room_data.objects]
         self.map_x = room_data.map_x
         self.map_y = room_data.map_y
 

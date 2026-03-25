@@ -25,23 +25,10 @@ class GameEngine:
         for rid, room in self.state.rooms.items():
             self.room_states[rid] = {'lightning': {}}
             for obj in room.objects:
-                if obj.type == 'door':
-                    obj.state = 0
-                elif obj.type in ['lightning_machine', 'lightning_switch']:
+                if obj.type in ['lightning_machine', 'lightning_switch']:
                     sid = obj.properties.get('system_id', 0)
                     if sid not in self.room_states[rid]['lightning']:
                         self.room_states[rid]['lightning'][sid] = True 
-                elif obj.type == 'forcefield':
-                    obj.state = 1
-                elif obj.type == 'mummy_release':
-                    obj.state = 0
-                elif obj.type == 'trapdoor':
-                    obj.state = 1 if obj.properties.get('is_open') else 0
-                elif obj.type == 'conveyor':
-                    obj.state = obj.properties.get('state', 1)
-                elif obj.type == 'raygun':
-                    obj.initial_y = obj.y
-                    obj.direction = 1
 
         start_room_idx = self.parser.data[3]
         start_door_idx = self.parser.data[5] 
@@ -90,20 +77,7 @@ class GameEngine:
         self.state.current_tick += 1
         for room in self.state.rooms.values():
             for obj in room.objects:
-                if obj.type == 'door' and 0 < obj.state < 2:
-                    if self.state.current_tick % 10 == 0: obj.state += 1
-                if obj.type == 'forcefield_switch' and obj.timer > 0:
-                    if self.state.current_tick % self.ticks_per_second == 0:
-                        obj.timer -= 1
-                        if obj.timer == 0:
-                            for fobj in room.objects:
-                                if fobj.type == 'forcefield': fobj.state = 1
-                if obj.type == 'raygun':
-                    if obj.timer > 0: obj.timer -= 1
-                    if self.state.current_tick % 2 == 0:
-                        obj.y += obj.direction * 1
-                        if obj.y >= obj.initial_y + 32: obj.direction = -1
-                        elif obj.y <= obj.initial_y: obj.direction = 1
+                obj.update(self, room, self.state.current_tick)
 
         for m in self.state.mummies:
             target_p = next((p for p in self.state.players if p.room_id == m['room_id']), None)
@@ -167,23 +141,7 @@ class GameEngine:
 
             room_lightning = self.room_states[player.room_id]['lightning']
             for obj in room.objects:
-                if obj.type == 'lightning_machine':
-                    if room_lightning.get(obj.properties.get('system_id', 0)):
-                        if abs(player.x - (obj.x + 2)) < 12 and obj.y <= player.y <= obj.y + 160:
-                            self._reset_player(player); return
-                elif obj.type == 'mummy_release' and obj.state == 0:
-                    if abs(player.x - obj.x) < 16 and abs((player.y - 16) - obj.y) < 32:
-                        obj.state = 1
-                        self.state.mummies.append({'x': obj.properties['tomb_x'] + 12, 'y': obj.properties['tomb_y'] + 32, 'room_id': player.room_id, 'is_moving': False})
-                elif obj.type == 'frankie' and obj.state == 0:
-                    if abs(player.y - (obj.y + 32)) < 24:
-                        obj.state = 1
-                        self.state.frankies.append({'x': obj.x + 12, 'y': obj.y + 32, 'room_id': player.room_id, 'vx': 0.5, 'is_moving': True})
-                elif obj.type == 'raygun':
-                    if abs(player.y - obj.y) < 16 and obj.timer == 0:
-                        obj.timer = 100
-                        direction = 1 if player.x > obj.x else -1
-                        self.state.projectiles.append({'x': obj.x + (16*direction), 'y': obj.y, 'vx': 3.0 * direction, 'room_id': player.room_id})
+                obj.on_collide(self, room, player)
 
             support = None
             if player.move_mode == 'walkway':
@@ -301,7 +259,7 @@ class GameEngine:
             'mummies': [{'x': m['x'], 'y': m['y'], 'room_id': m['room_id'], 'is_moving': m.get('is_moving', False), 'facing_left': m.get('facing_left', False)} for m in self.state.mummies],
             'frankies': [{'x': f['x'], 'y': f['y'], 'room_id': f['room_id'], 'is_moving': f.get('is_moving', False), 'facing_left': f.get('facing_left', False)} for f in self.state.frankies],
             'projectiles': [{'x': p['x'], 'y': p['y'], 'room_id': p['room_id']} for p in self.state.projectiles],
-            'rooms': {rid: {'lightning_systems': {str(k): v for k, v in self.room_states[rid]['lightning'].items()}, 'objects': [{'type': o.type, 'x': o.x, 'y': o.y, 'state': o.state, 'timer': o.timer, 'max_timer': o.max_timer, 'properties': o.properties} for o in r.objects]} for rid, r in self.state.rooms.items()}
+            'rooms': {rid: {'lightning_systems': {str(k): v for k, v in self.room_states[rid]['lightning'].items()}, 'objects': [o.serialize(self.state.current_tick) for o in r.objects]} for rid, r in self.state.rooms.items()}
         }
         self.network.broadcast_state(state_dict)
 
@@ -318,22 +276,9 @@ class GameEngine:
 
         if p.move_mode == 'walkway':
             for obj in room.objects:
-                if obj.type == 'teleport' and abs(p.x - obj.x) < 12 and abs(p.y - (obj.y + 32)) < 16:
-                    target_colors = sorted(list(set(o.properties['color'] for o in room.objects if o.type == 'teleport_target')))
-                    if not target_colors: target_colors = [0]
-                    cur_idx = target_colors.index(obj.state) if obj.state in target_colors else 0
-                    if commands.get('up'): obj.state = target_colors[(cur_idx - 1) % len(target_colors)]; return
-                    if commands.get('down'): obj.state = target_colors[(cur_idx + 1) % len(target_colors)]; return
-                if obj.type == 'raygun_switch' and abs(p.x - obj.x) < 12 and abs((p.y-16) - obj.y) < 32:
-                    for rgun in room.objects:
-                        if rgun.type == 'raygun':
-                            if commands.get('up'): rgun.y -= 2; return
-                            if commands.get('down'): rgun.y += 2; return
-                            if commands.get('action'):
-                                if rgun.timer == 0:
-                                    rgun.timer = 100
-                                    self.state.projectiles.append({'x': rgun.x + 16, 'y': rgun.y, 'vx': 3.0, 'room_id': p.room_id})
-                                return
+                dist_x, dist_y = abs(p.x - obj.x), abs((p.y - 16) - obj.y)
+                if dist_x < 16 and dist_y < 48:
+                    obj.on_interact(self, room, p, commands)
 
         if commands.get('left'): p.vx = -2.0
         if commands.get('right'): p.vx = 2.0
@@ -342,56 +287,6 @@ class GameEngine:
         
         if commands.get('action'):
             p.is_acting = 10
-            room_doors = [obj for obj in room.objects if obj.type == 'door']
-            for obj in room.objects:
-                dist_x, dist_y = abs(p.x - obj.x), abs((p.y - 16) - obj.y)
-                if dist_x < 16 and dist_y < 48:
-                    if obj.type == 'doorbell':
-                        target_id = obj.properties.get('target_door_idx')
-                        if 0 <= target_id < len(room_doors):
-                            if room_doors[target_id].state == 0: room_doors[target_id].state = 1
-                    elif obj.type in ['lightning_switch', 'forcefield_switch']:
-                        if obj.type == 'forcefield_switch' or p.room_id == 4:
-                            obj.timer = 8
-                            for fobj in room.objects:
-                                if fobj.type == 'forcefield': fobj.state = 0
-                        else:
-                            sid = obj.properties.get('system_id', 0)
-                            targets = obj.properties.get('targets', [])
-                            rs = self.room_states[p.room_id]['lightning']
-                            if sid not in rs: rs[sid] = True
-                            rs[sid] = not rs[sid]
-                            for tid in targets:
-                                if tid != 0xFF: rs[tid] = rs[sid]
-                    elif obj.type == 'conveyor_switch':
-                        target_id = obj.properties.get('target_idx')
-                        if 0 <= target_id < len(room.objects):
-                            c_obj = room.objects[target_id]
-                            states = [0, 1, 2, 1]
-                            cur_idx = states.index(c_obj.state) if c_obj.state in states else 1
-                            c_obj.state = states[(cur_idx + 1) % 4]
-                    elif obj.type == 'trapdoor_switch':
-                        target_id = obj.properties.get('target_idx')
-                        if 0 <= target_id < len(room.objects):
-                            room.objects[target_id].state = 1 if room.objects[target_id].state == 0 else 0
-                    elif obj.type == 'key':
-                        p.keys.append(obj.properties['color']); room.objects.remove(obj)
-                    elif obj.type == 'lock':
-                        color = obj.properties.get('color', 0)
-                        if color in p.keys:
-                            target_id = obj.properties.get('target_door_idx')
-                            if 0 <= target_id < len(room_doors):
-                                if room_doors[target_id].state == 0:
-                                    room_doors[target_id].state = 1; p.keys.remove(color); break
-                    elif obj.type == 'teleport':
-                        tc = obj.state
-                        for rid, rstate in self.state.rooms.items():
-                            for tobj in rstate.objects:
-                                if tobj.type == 'teleport_target' and tobj.properties['color'] == tc:
-                                    p.is_teleporting = 20
-                                    p.target_room_id = rid
-                                    p.target_x, p.target_y = tobj.x, tobj.y + 32
-                                    return
 
 if __name__ == "__main__":
     import sys
