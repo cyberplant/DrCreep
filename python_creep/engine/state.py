@@ -1,24 +1,6 @@
 from .parser import RoomData
 from .components import create_component
-
-class Player:
-    def __init__(self, id, start_x, start_y):
-        self.id = id
-        self.x = start_x
-        self.y = start_y
-        self.vx = 0
-        self.vy = 0
-        self.lives = 3
-        self.keys = [] # list of key colors
-        self.anim_state = "idle"
-        self.room_id = 0
-        self.facing_left = False
-        self.move_mode = 'walkway' # 'walkway' or 'ladder'
-        self.last_transition_tick = 0
-        self.is_teleporting = 0
-        self.target_room_id = 0
-        self.target_x = 0
-        self.target_y = 0
+from .components.player import Player
 
 class RoomState:
     def __init__(self, room_data: RoomData):
