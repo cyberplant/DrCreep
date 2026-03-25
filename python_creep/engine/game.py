@@ -13,14 +13,15 @@ def log_engine(msg):
         f.write(f"[{time.strftime('%H:%M:%S')}] {msg}\n")
 
 class GameEngine:
-    def __init__(self, castle_file):
-        log_engine(f"Starting engine with {castle_file}")
+    def __init__(self, castle_file, debug_mode=False):
+        log_engine(f"Starting engine with {castle_file} (debug: {debug_mode})")
         self.parser = CastleParser(castle_file)
         self.state = GameState(self.parser)
         self.network = NetworkServer(self)
         self.running = False
         self.ticks_per_second = 50
         self.pending_commands = {} # player_id -> commands
+        self.debug_mode = debug_mode
         
         self.room_states = {}
         for rid, room in self.state.rooms.items():
@@ -100,7 +101,7 @@ class GameEngine:
         room = self.state.rooms.get(player.room_id)
         if room:
             for obj in room.objects:
-                from .components.environment import DoorComponent
+                from .components.door import DoorComponent
                 if isinstance(obj, DoorComponent) and obj.state == 2:
                     player.x, player.y, player.vx, player.vy, player.move_mode = obj.x + 10, obj.y + 32, 0, 0, 'walkway'
                     break
@@ -109,6 +110,7 @@ class GameEngine:
         state_dict = {
             'tick': self.state.current_tick,
             'victory': self.state.victory,
+            'debug_mode': self.debug_mode,
             'players': [{'id': p.id, 'x': p.x, 'y': p.y, 'room_id': p.room_id, 'keys': p.keys, 'is_moving': getattr(p, 'is_moving', False), 'is_acting': getattr(p, 'is_acting', 0), 'is_teleporting': getattr(p, 'is_teleporting', 0), 'facing_left': getattr(p, 'facing_left', False)} for p in self.state.players],
             'mummies': [m.serialize() for m in self.state.mummies],
             'frankies': [f.serialize() for f in self.state.frankies],
@@ -125,6 +127,9 @@ class GameEngine:
         self.pending_commands[player_id] = commands
 
 if __name__ == "__main__":
-    import sys
-    castle = sys.argv[1] if len(sys.argv) > 1 else "run/data/castles/ZTUTORIAL"
-    engine = GameEngine(castle); engine.start()
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("castle", nargs="?", default="run/data/castles/ZTUTORIAL")
+    parser.add_argument("--debug", action="store_true")
+    args = parser.parse_args()
+    engine = GameEngine(args.castle, debug_mode=args.debug); engine.start()

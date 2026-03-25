@@ -1,5 +1,9 @@
 
 class BaseComponent:
+    """
+    Base class for all game objects. Defines the standard interface
+    for lifecycle, interaction, physics, and serialization.
+    """
     def __init__(self, data):
         self.type = data.get('type')
         self.x = data.get('x', 0)
@@ -11,26 +15,30 @@ class BaseComponent:
         self.properties = data
 
     def update(self, engine, room, tick):
-        """Called every game tick. Handle movement, timers, AI here."""
+        """Standard per-tick logic (animations, state changes)."""
         pass
 
     def on_collide(self, engine, room, entity):
-        """Triggered when an entity (Player, Frankie, Mummy) overlaps the bounding box."""
+        """Triggered when a mobile entity (Player, Mummy, etc.) enters the object's bounds."""
         pass
         
     def on_interact(self, engine, room, player, commands):
-        """Triggered when a player interacts with the object."""
+        """Triggered when the player attempts to use or interact with the object."""
         pass
 
     def filter_movement(self, engine, room, entity, dx, dy):
-        """Allow components to modify or block movement intent."""
-        return dx, dy, False # Returns modified dx, dy and a 'stop' flag
+        """
+        Allows the component to influence movement intent.
+        Returns: (modified_dx, modified_dy, stop_flag)
+        """
+        return dx, dy, False
 
     def get_asset(self, tick):
+        """Returns the current ASCII frame for rendering."""
         return None
 
     def serialize(self, tick=0):
-        """Return a dictionary of state for network broadcast."""
+        """Serializes the component state for network broadcasting."""
         res = {
             'type': self.type,
             'x': self.x,

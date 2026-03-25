@@ -1,6 +1,11 @@
 from .base import BaseComponent
 
 class ProjectileEntity:
+    """
+    Moving projectile (Ray Gun bolt).
+    - Moves horizontally until it hits a player or screen boundary.
+    - Resets player on contact.
+    """
     def __init__(self, data):
         self.x = data['x']
         self.y = data['y']
@@ -10,11 +15,13 @@ class ProjectileEntity:
 
     def update(self, engine, tick):
         self.x += self.vx
+        # Hit check
         for p in engine.state.players:
             if p.room_id == self.room_id and abs(p.x - self.x) < 12 and abs(p.y - self.y) < 12:
                 engine._reset_player(p)
                 self.active = False
                 return
+        # Boundary check
         if self.x < 0 or self.x > 320:
             self.active = False
 
@@ -22,6 +29,11 @@ class ProjectileEntity:
         return {'x': self.x, 'y': self.y, 'room_id': self.room_id}
 
 class RaygunComponent(BaseComponent):
+    """
+    Automatic or trigger-able Ray Gun.
+    - Moves vertically on its track.
+    - Spawns a projectile when player is in front (if automatic).
+    """
     ASSET = ["[red]>====>[/]"]
     def __init__(self, data):
         super().__init__(data)
@@ -29,6 +41,7 @@ class RaygunComponent(BaseComponent):
         self.direction = 1
 
     def update(self, engine, room, tick):
+        """Vertical patrol logic."""
         if self.timer > 0:
             self.timer -= 1
         if tick % 2 == 0:
@@ -39,6 +52,7 @@ class RaygunComponent(BaseComponent):
                 self.direction = 1
 
     def on_collide(self, engine, room, entity):
+        """Automatic firing logic when entity is in line of sight."""
         if abs(entity.y - self.y) < 16 and self.timer == 0:
             self.timer = 100
             direction = 1 if entity.x > self.x else -1
@@ -53,14 +67,16 @@ class RaygunComponent(BaseComponent):
         return self.ASSET
 
 class RaygunSwitchComponent(BaseComponent):
+    """Manual controls for a Ray Gun (Vertical movement and fire)."""
     ASSET = [
             " [cyan]^[/] ",
             " [cyan]O[/] ",
             " [cyan]v[/] "
         ]
     def on_interact(self, engine, room, player, commands):
+        """Handle directional and action inputs to control ray guns."""
         for rgun in room.objects:
-            if isinstance(rgun, RaygunComponent):
+            if rgun.type == 'raygun':
                 if commands.get('up'): rgun.y -= 2; return
                 if commands.get('down'): rgun.y += 2; return
                 if commands.get('action'):

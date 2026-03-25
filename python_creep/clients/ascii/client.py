@@ -137,17 +137,42 @@ class GameBoard(Static):
 
         width, height = 80, 50
         grid = [[(' ', 1) for _ in range(width)] for _ in range(height)]
-        floor_color_id = 1 # fallback
-        # Get actual room floor color
-        # Since room color is not directly in broadcast 'rooms' dict root yet (only lightning_systems and objects)
-        # We'll use white as default room_color until we add it to broadcast
+        debug_mode = state.get('debug_mode', False)
         room_color_name = "white"
-        
         lightning_systems = room.get('lightning_systems', {})
         tick = state['tick']
 
         def py(y): return (int(y) * 50) // 200
         def px(x): return 2*((int(x) >> 2) - 4)
+
+        if debug_mode:
+            # Draw Grid every 10 world units
+            for wy in range(0, 201, 10):
+                gy = py(wy)
+                if 0 <= gy < height:
+                    for gx in range(width):
+                        if grid[gy][gx][0] == ' ': grid[gy][gx] = ('·', 11)
+            for wx in range(0, 321, 10):
+                gx = px(wx)
+                if 0 <= gx < width:
+                    for gy in range(height):
+                        if grid[gy][gx][0] == ' ': grid[gy][gx] = ('·', 11)
+            
+            # Draw Horizontal Ruler (Top)
+            for wx in range(0, 321, 20):
+                gx = px(wx)
+                if 0 <= gx < width:
+                    txt = str(wx)
+                    for i, char in enumerate(txt):
+                        if gx + i < width: grid[0][gx+i] = (char, 7) # Yellow ruler
+            
+            # Draw Vertical Ruler (Left)
+            for wy in range(0, 201, 20):
+                gy = py(wy)
+                if 0 <= gy < height:
+                    txt = str(wy)
+                    for i, char in enumerate(txt):
+                        if i < width: grid[gy][i] = (char, 7)
 
         # 1. Walkways
         for obj in room['objects']:
