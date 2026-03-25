@@ -1,21 +1,15 @@
-from .environment import (
-    DoorComponent, WalkwayComponent, LadderComponent, 
-    PoleComponent, TrapdoorComponent, ConveyorComponent
-)
-from .interactive import (
-    TeleportComponent, TeleportTargetComponent, 
-    KeyComponent, LockComponent, TextComponent
-)
-from .hazards import (
-    ForcefieldComponent, LightningMachineComponent, RaygunComponent
-)
-from .switches import (
-    DoorbellComponent, LightningSwitchComponent, ForcefieldSwitchComponent,
-    TrapdoorSwitchComponent, ConveyorSwitchComponent, RaygunSwitchComponent
-)
-from .entities import (
-    MummyReleaseComponent, MummyTombComponent, FrankieComponent
-)
+from .environment import WalkwayComponent, LadderComponent, PoleComponent
+from .door import DoorComponent, DoorbellComponent
+from .trapdoor import TrapdoorComponent, TrapdoorSwitchComponent
+from .conveyor import ConveyorComponent, ConveyorSwitchComponent
+from .raygun import RaygunComponent, RaygunSwitchComponent
+from .lightning import LightningMachineComponent, LightningSwitchComponent
+from .forcefield import ForcefieldComponent, ForcefieldSwitchComponent
+from .mummy import MummyReleaseComponent, MummyTombComponent
+from .frankie import FrankieComponent
+from .teleport import TeleportComponent, TeleportTargetComponent
+from .items import KeyComponent, LockComponent
+from .text import TextComponent
 from .base import BaseComponent
 
 COMPONENT_MAP = {

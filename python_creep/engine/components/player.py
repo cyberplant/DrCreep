@@ -54,8 +54,8 @@ class Player:
                     dist_x, dist_y = abs(self.x - obj.x), abs((self.y - 16) - obj.y)
                     if dist_x < 16 and dist_y < 48:
                         # Only some components care about up/down without action
-                        from .interactive import TeleportComponent
-                        from .switches import RaygunSwitchComponent
+                        from .teleport import TeleportComponent
+                        from .raygun import RaygunSwitchComponent
                         if isinstance(obj, (TeleportComponent, RaygunSwitchComponent)):
                             obj.on_interact(engine, room, self, commands)
 
@@ -78,7 +78,7 @@ class Player:
         # Check for Trapdoor falling
         if self.move_mode == 'walkway' and support:
             for obj in room.objects:
-                from .environment import TrapdoorComponent
+                from .trapdoor import TrapdoorComponent
                 if isinstance(obj, TrapdoorComponent) and obj.state == 1:
                     # If player is on a trapdoor that is open
                     if abs(obj.y - (support.y - 32)) < 8 and obj.x - 4 <= self.x <= obj.x + 12:
@@ -163,7 +163,7 @@ class Player:
         return None
 
     def _check_door_transition(self, engine, room, tick):
-        from .environment import DoorComponent
+        from .door import DoorComponent
         for obj in room.objects:
             if isinstance(obj, DoorComponent) and obj.state == 2:
                 if abs(self.x - (obj.x + 10)) < 16 and abs(self.y - (obj.y + 32)) < 16:
