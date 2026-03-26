@@ -15,11 +15,15 @@ class LadderComponent(BaseComponent):
         """Handle mode switching and vertical snapping."""
         # Calculate vertical intent
         dy = proposal['y'] - player.y
+        # Detect horizontal movement intent
+        has_horizontal_intent = abs(proposal['x'] - player.x) > 0.1
 
         if abs(proposal['x'] - self.x) < 4:
             if self.y <= proposal['y'] <= self.end_y:
                 if proposal['move_mode'] == 'ladder':
-                    proposal['x'] = self.x
+                    # Only snap to X if no horizontal intent (allows walking off)
+                    if not has_horizontal_intent:
+                        proposal['x'] = self.x
                     proposal['has_support'] = True
                 elif abs(dy) > 0.1:
                     # Switch to ladder mode if intending to move vertically
@@ -39,11 +43,15 @@ class PoleComponent(BaseComponent):
     def process_proposal(self, engine, room, player, proposal):
         # Calculate vertical intent
         dy = proposal['y'] - player.y
+        # Detect horizontal movement intent
+        has_horizontal_intent = abs(proposal['x'] - player.x) > 0.1
 
         if abs(proposal['x'] - self.x) < 4:
             if self.y <= proposal['y'] <= self.end_y:
                 if proposal['move_mode'] == 'ladder':
-                    proposal['x'] = self.x
+                    # Only snap to X if no horizontal intent
+                    if not has_horizontal_intent:
+                        proposal['x'] = self.x
                     proposal['has_support'] = True
                     # Block UP movement on poles: if moving up, revert to player.y
                     if dy < -0.1: 

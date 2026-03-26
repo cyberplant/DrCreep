@@ -13,9 +13,14 @@ class WalkwayComponent(BaseComponent):
 
     def process_proposal(self, engine, room, current_state, proposal):
         """If player is within X bounds and close to Y, treat as support."""
-        if proposal['move_mode'] == 'walkway':
-            if self.x <= proposal['x'] <= self.end_x:
-                # Check if player is within the walkway's vertical range (8 units)
-                if self.y <= proposal['y'] <= self.y + 8:
+        # Detect horizontal movement intent
+        has_horizontal_intent = abs(proposal['x'] - current_state.x) > 0.1
+
+        if self.x <= proposal['x'] <= self.end_x:
+            # Check if player is within the walkway's vertical range (8 units)
+            if self.y <= proposal['y'] <= self.y + 8:
+                # Provide support if already in walkway mode OR if transitioning from ladder
+                if proposal['move_mode'] == 'walkway' or (has_horizontal_intent and abs(proposal['y'] - self.y) < 4):
                     proposal['y'] = self.y # Snap to top surface
+                    proposal['move_mode'] = 'walkway'
                     proposal['has_support'] = True
