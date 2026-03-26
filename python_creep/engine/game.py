@@ -14,6 +14,7 @@ def log_engine(msg):
 
 class GameEngine:
     def __init__(self, castle_file, debug_mode=False):
+        self.castle_file = castle_file
         log_engine(f"Starting engine with {castle_file} (debug: {debug_mode})")
         self.parser = CastleParser(castle_file)
         self.state = GameState(self.parser)
@@ -95,10 +96,10 @@ class GameEngine:
             
             # Initial intent (discrete movement, no acceleration)
             dx, dy = 0, 0
-            if cmds.get('left'): dx = -2.0
-            elif cmds.get('right'): dx = 2.0
-            if cmds.get('up'): dy = -2.0
-            elif cmds.get('down'): dy = 2.0
+            if cmds.get('left'): dx = -4.0
+            elif cmds.get('right'): dx = 4.0
+            if cmds.get('up'): dy = -4.0
+            elif cmds.get('down'): dy = 4.0
 
             proposal = {
                 'x': player.x + dx,
@@ -174,7 +175,7 @@ class GameEngine:
 
     def handle_input(self, player_id, commands):
         if commands.get('restart'):
-            self.__init__(self.parser.name)
+            self.__init__(self.castle_file, debug_mode=self.debug_mode)
             return
         if self.state.victory: return
         self.pending_commands[player_id] = commands
