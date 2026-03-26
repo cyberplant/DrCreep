@@ -49,4 +49,7 @@ class ForcefieldSwitchComponent(BaseComponent):
                         fobj.state = 0
 
     def get_asset(self, tick):
-        return ["[cyan]S[/]"]
+        if self.timer > 0:
+            return [f"[cyan][ {self.timer} ][/]"]
+        else:
+            return ["[cyan][ * ][/]"]

@@ -1,4 +1,5 @@
-from .environment import WalkwayComponent, LadderComponent, PoleComponent
+from .walkway import WalkwayComponent
+from .ladder import LadderComponent, PoleComponent
 from .door import DoorComponent, DoorbellComponent
 from .trapdoor import TrapdoorComponent, TrapdoorSwitchComponent
 from .conveyor import ConveyorComponent, ConveyorSwitchComponent
