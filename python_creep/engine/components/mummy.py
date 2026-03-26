@@ -17,18 +17,41 @@ class MummyEntity:
         self.type = 'mummy_entity'
 
     def update(self, engine, tick):
-        """Simple horizontal tracking of the player."""
+        """Horizontal tracking of the player with gravity and walkway support."""
+        room = engine.state.rooms.get(self.room_id)
         target_p = next((p for p in engine.state.players if p.room_id == self.room_id), None)
         self.is_moving = False
-        if target_p and abs(target_p.y - self.y) < 16:
+        
+        # Apply gravity
+        self.y += 2
+        has_support = False
+        for obj in room.objects:
+            if obj.type == 'walkway':
+                if obj.x - 4 <= self.x <= obj.x + (obj.length * 4) + 4:
+                    if abs(self.y - obj.y) < 4:
+                        self.y = obj.y
+                        has_support = True
+                        break
+        
+        if has_support and target_p and abs(target_p.y - self.y) < 16:
             if tick % 3 == 0:
                 self.is_moving = True
-                if self.x < target_p.x: 
-                    self.x += 1
-                    self.facing_left = False
-                elif self.x > target_p.x: 
-                    self.x -= 1
-                    self.facing_left = True
+                vx = 1 if self.x < target_p.x else -1
+                
+                # Check walkway ahead
+                next_x = self.x + vx * 8
+                can_move = False
+                for obj in room.objects:
+                    if obj.type == 'walkway' and abs(self.y - obj.y) < 4:
+                        if obj.x <= next_x <= obj.x + (obj.length * 4):
+                            can_move = True
+                            break
+                
+                if can_move:
+                    self.x += vx
+                    self.facing_left = (vx < 0)
+                else:
+                    self.is_moving = False
 
     def process_proposal(self, engine, room, current_state, proposal):
         """Check for contact with player and kill if touching."""
@@ -56,7 +79,7 @@ class MummyReleaseComponent(BaseComponent):
                 self.state = 1
                 engine.state.mummies.append(MummyEntity({
                     'x': self.properties['tomb_x'] + 12, 
-                    'y': self.properties['tomb_y'] + 32, 
+                    'y': self.properties['tomb_y'] + 24, 
                     'room_id': proposal['room_id']
                 }))
 

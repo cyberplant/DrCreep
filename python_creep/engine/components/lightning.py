@@ -29,6 +29,11 @@ class LightningSwitchComponent(BaseComponent):
         super().__init__(data)
         self.system_id = data.get('system_id', 0)
         self.targets = data.get('targets', [])
+        self.state = 0
+
+    def update(self, engine, room, tick):
+        rs = engine.room_states[room.id]['lightning']
+        self.state = 1 if rs.get(self.system_id) else 0
 
     def process_proposal(self, engine, room, current_state, proposal):
         """Handle interaction via pipeline."""

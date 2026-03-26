@@ -22,22 +22,23 @@ class TeleportComponent(BaseComponent):
     ]
     def __init__(self, data):
         super().__init__(data)
-        self.state = data.get('target', 0)
+        self.state = data.get('color', 1)
 
     def process_proposal(self, engine, room, current_state, proposal):
         """Handle interaction via pipeline."""
         dist_x, dist_y = abs(proposal['x'] - self.x), abs(proposal['y'] - (self.y + 32))
-        if dist_x < 12 and dist_y < 16:
+        if dist_x < 16 and dist_y < 48:
             cmds = proposal.get('commands', {})
             
             # 1. Target cycling
             target_colors = sorted(list(set(o.properties['color'] for o in room.objects if o.type == 'teleport_target')))
-            if not target_colors: target_colors = [0]
-            cur_idx = target_colors.index(self.state) if self.state in target_colors else 0
+            if not target_colors: target_colors = [self.state]
             
             if cmds.get('up'):
+                cur_idx = target_colors.index(self.state) if self.state in target_colors else 0
                 self.state = target_colors[(cur_idx - 1) % len(target_colors)]
             elif cmds.get('down'):
+                cur_idx = target_colors.index(self.state) if self.state in target_colors else 0
                 self.state = target_colors[(cur_idx + 1) % len(target_colors)]
             
             # 2. Teleport trigger

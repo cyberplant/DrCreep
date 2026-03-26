@@ -256,7 +256,19 @@ ASSETS = {
     "doorbell": {"template": ["[white]●[/]"]},
     "key": {"template": ["[obj_color]k[/]"]},
     "lock": {"template": ["[obj_color]X[/]"]},
-    "forcefield_switch": {"template": ["[cyan]S[/]"]},
+    "forcefield_switch": {
+        "states": {
+            0: ["[cyan][ * ][/]"],
+            1: ["[cyan][ 8 ][/]"],
+            2: ["[cyan][ 7 ][/]"],
+            3: ["[cyan][ 6 ][/]"],
+            4: ["[cyan][ 5 ][/]"],
+            5: ["[cyan][ 4 ][/]"],
+            6: ["[cyan][ 3 ][/]"],
+            7: ["[cyan][ 2 ][/]"],
+            8: ["[cyan][ 1 ][/]"]
+        }
+    },
     "forcefield": {
         "states": {
             0: ["[cyan]z[/]", " ", " ", " ", " ", " ", " ", " "],
@@ -267,19 +279,31 @@ ASSETS = {
         "template": [
             "[red]#####[/]",
             "[red]#####[/]",
+            "[red]#####[/]",
+            "[red]#####[/]",
+            "[red]#####[/]",
             "[red]#####[/]"
         ]
     },
     "lightning_machine": {"template": ["[cyan](O)[/]"]},
-    "lightning_switch": {"template": ["[cyan][[yellow]T[/]][/]"]},
+    "lightning_switch": {
+        "states": {
+            0: ["[cyan][[yellow]T[/]][/]"],
+            1: ["[cyan][[*]] [/]"]
+        }
+    },
     "trapdoor_switch": {"template": ["[cyan]o[/]"]},
     "raygun": {"template": ["[red]>====>[/]"]},
     "raygun_switch": {
-        "template": [
-            " [cyan]^[/] ",
-            " [cyan]O[/] ",
-            " [cyan]v[/] "
-        ]
+        "states": {
+            0: [ " [cyan]^[/] ", " [cyan]O[/] ", " [cyan]v[/] " ], # Neutral
+            1: [ " [yellow]^[/] ", " [cyan]O[/] ", " [cyan]v[/] " ], # UP
+            2: [ " [cyan]^[/] ", " [cyan]O[/] ", " [yellow]v[/] " ], # DOWN
+            3: [ " [cyan]^[/] ", " [red]O[/] ", " [cyan]v[/] " ]   # FIRE
+        }
+    },
+    "conveyor_switch": {
+        "template": ["[cyan]<< [obj_color]O[/] >>[/]"]
     },
     "mummy_release": {"template": ["[white]M[/]"]}
 }

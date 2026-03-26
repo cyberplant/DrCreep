@@ -169,7 +169,11 @@ class GameEngine:
             'mummies': [m.serialize() for m in self.state.mummies],
             'frankies': [f.serialize() for f in self.state.frankies],
             'projectiles': [p.serialize() for p in self.state.projectiles],
-            'rooms': {rid: {'lightning_systems': {str(k): v for k, v in self.room_states[rid]['lightning'].items()}, 'objects': [o.serialize(self.state.current_tick) for o in r.objects]} for rid, r in self.state.rooms.items()}
+            'rooms': {rid: {
+                'color': r.color & 0xF,
+                'lightning_systems': {str(k): v for k, v in self.room_states[rid]['lightning'].items()}, 
+                'objects': [o.serialize(self.state.current_tick) for o in r.objects]
+            } for rid, r in self.state.rooms.items()}
         }
         self.network.broadcast_state(state_dict)
 

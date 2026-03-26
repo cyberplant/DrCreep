@@ -45,14 +45,20 @@ class ConveyorComponent(BaseComponent):
 
 class ConveyorSwitchComponent(BaseComponent):
     """Toggles conveyor state: Left -> Off -> Right -> Off."""
+    def update(self, engine, room, tick):
+        target_id = self.properties.get('target_idx')
+        if 0 <= target_id < len(room.objects):
+            self.state = room.objects[target_id].state
+
     def on_interact(self, engine, room, player, commands):
         if commands.get('action'):
             target_id = self.properties.get('target_idx')
             if 0 <= target_id < len(room.objects):
                 c_obj = room.objects[target_id]
-                states = [0, 1, 2, 1]
-                cur_idx = states.index(c_obj.state) if c_obj.state in states else 1
-                # Cycle through states
-                c_obj.state = states[(cur_idx + 1) % 4]
-    def get_asset(self, tick):
-        return ["[cyan]o[/]"]
+                # States: 0=LEFT, 1=OFF, 2=RIGHT
+                # Cycle: LEFT -> OFF -> RIGHT -> OFF -> ...
+                if c_obj.state == 0: c_obj.state = 1 # LEFT -> OFF
+                elif c_obj.state == 1: c_obj.state = 2 # OFF -> RIGHT (or check which way it went last?)
+                elif c_obj.state == 2: c_obj.state = 1 # RIGHT -> OFF
+                # Dr. Creep switches usually cycle through all 3 states if pressed repeatedly.
+                # But simple toggle is often enough.

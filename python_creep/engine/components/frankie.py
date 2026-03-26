@@ -24,34 +24,55 @@ class FrankieEntity:
         target_p = next((p for p in engine.state.players if p.room_id == self.room_id), None)
         self.is_moving = True
         
-        if target_p:
-            dx = target_p.x - self.x
-            dy = target_p.y - self.y
-            if abs(dy) < 8:
-                # Same level: track horizontally
-                self.vx = 0.5 if dx > 0 else -0.5
-                self.move_mode = 'walkway'
-            else:
-                # Different level: look for ladders or poles nearby
-                on_ladder = False
-                for obj in room.objects:
-                    if obj.type in ('ladder', 'pole') and abs(self.x - obj.x) < 4:
-                        if dy > 0: self.y += 1
-                        else:
-                            if obj.type == 'ladder': self.y -= 1
-                        on_ladder = True
-                        self.move_mode = 'ladder'
-                        break
-                if not on_ladder: 
-                    # If no ladder found, keep tracking horizontally
-                    self.vx = 0.5 if dx > 0 else -0.5
-                    self.move_mode = 'walkway'
+        has_support = False
+        on_ladder = False
+        
+        # 1. Check for ladders/poles if at different Y level
+        if target_p and abs(target_p.y - self.y) > 8:
+            for obj in room.objects:
+                if obj.type in ('ladder', 'pole') and abs(self.x - obj.x) < 4:
+                    if target_p.y > self.y: self.y += 1
+                    else:
+                        if obj.type == 'ladder': self.y -= 1
+                    on_ladder = True
+                    self.move_mode = 'ladder'
+                    break
 
-        # Horizontal movement and boundary bounce
-        if self.move_mode != 'ladder':
-            self.x += self.vx
-            if self.x < 20: self.vx = 0.5
-            if self.x > 180: self.vx = -0.5
+        # 2. Horizontal tracking and gravity
+        if not on_ladder:
+            self.move_mode = 'walkway'
+            # Apply gravity
+            self.y += 2
+            
+            # Check for walkway support and boundaries
+            for obj in room.objects:
+                if obj.type == 'walkway':
+                    if obj.x - 4 <= self.x <= obj.x + (obj.length * 4) + 4:
+                        if abs(self.y - obj.y) < 4:
+                            self.y = obj.y
+                            has_support = True
+                            break
+            
+            if has_support and target_p:
+                dx = target_p.x - self.x
+                self.vx = 0.5 if dx > 0 else -0.5
+                
+                # Check if we can move in vx direction without falling
+                next_x = self.x + self.vx * 10 # Look ahead
+                can_move = False
+                for obj in room.objects:
+                    if obj.type == 'walkway' and abs(self.y - obj.y) < 4:
+                        if obj.x <= next_x <= obj.x + (obj.length * 4):
+                            can_move = True
+                            break
+                if can_move:
+                    self.x += self.vx
+                else:
+                    self.is_moving = False
+            
+            # World Boundaries
+            self.x = max(16, min(304, self.x))
+            self.y = min(200, self.y)
             self.facing_left = (self.vx < 0)
 
     def process_proposal(self, engine, room, current_state, proposal):

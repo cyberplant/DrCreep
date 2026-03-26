@@ -30,6 +30,7 @@ class ForcefieldSwitchComponent(BaseComponent):
     Temporary switch for forcefields.
     """
     def update(self, engine, room, tick):
+        self.state = self.timer
         if self.timer > 0:
             if tick % engine.ticks_per_second == 0:
                 self.timer -= 1

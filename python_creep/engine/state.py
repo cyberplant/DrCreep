@@ -5,6 +5,7 @@ from .components.player import Player
 class RoomState:
     def __init__(self, room_data: RoomData):
         self.id = room_data.number
+        self.color = room_data.color
         self.objects = [create_component(o) for o in room_data.objects]
         self.map_x = room_data.map_x
         self.map_y = room_data.map_y

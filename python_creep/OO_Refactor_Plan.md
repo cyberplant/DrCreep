@@ -74,12 +74,3 @@ When a collision occurs, the engine calls `obj.on_collide(player)`. The object i
   * Move the walkway support, conveyor pushing, and trapdoor falling logic into the respective collision handlers.
 * **Phase 5: Asset Migration**
   * Move the dictionaries from `assets.py` into class-level attributes on the components. Update the broadcast so the client receives the exact frame to render, simplifying `client.py`.
-
-## 6. Post-Refactor Observations & Future Improvements
-
-### 6.1 Known Issues (To be fixed in next PR)
-* **Coordinate Inaccuracies**: Despite the structural cleanup, some objects still appear misaligned. A focused pass on coordinate scaling and map data interpretation is required.
-
-### 6.2 Planned Features
-* **Map Selection Menu**: Instead of an automatic restart, the engine should scan the `castles/` directory and present a list of valid maps for the player to choose from upon victory or start.
-* **Entity Unification**: Consolidate `mummies`, `frankies`, and `players` into a single `entities` list in `GameState` to simplify the pipeline iteration even further.

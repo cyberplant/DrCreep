@@ -19,13 +19,20 @@
 
 ## 3. Missing (To be Implemented)
 * **Pytest for Alignment**: Add rendering tests using the `ZTUTORIAL` map to mathematically assert that objects sit on the walkways correctly.
-* **Lightning Switch Assets**: Add explicit `ON` and `OFF` visual states to `assets.py`.
+* **Lightning Switch Assets**: Add explicit `ON` and `OFF` visual states to assets
 * **Force Field Countdown**: Add numbered animation frames for the force field switch countdown.
-* **Ray Gun Controller Assets**: Add explicit `UP`, `DOWN`, `FIRE` states for the ray gun controller switch in `assets.py`.
+* **Ray Gun Controller Assets**: Add explicit `UP`, `DOWN`, `FIRE` states for the ray gun controller switch in asset
 
 ## Action Plan
 1. **Commit Plan**: Save this document to the project root as `QA_Status_Report.md`, commit it, and push to the remote repository.
 2. **Fix Coordinate Rendering**: Set up Pytest to assert vertical mapping. Then fix the `y` coordinate projection for doors, buttons, mummies, and trapdoors so nothing floats.
 3. **Fix Color Propagation**: Broadcast the room color from the engine and map it to `[room_color]`.
 4. **Enhance AI**: Refine Frankie's pathfinding and the Ray Gun's Y-tracking logic.
-5. **Update Assets**: Add the missing states to `assets.py` for Force Field timers, Ray Gun controllers, and Lightning switches.
+5. **Update Assets**: Add the missing states to assets for Force Field timers, Ray Gun controllers, and Lightning switches.
+
+### Comments from the OO refactoring:
+* **Coordinate Inaccuracies**: Despite the structural cleanup, some objects still appear misaligned. A focused pass on coordinate scaling and map data interpretation is required.
+
+### Planned Features
+* **Map Selection Menu**: Instead of an automatic restart, the engine should scan the directory where the current castle was loaded, and present a list of valid maps for the player to choose from upon victory or start.
+* **Entity Unification**: Consolidate `mummies`, `frankies`, and `players` into a single `entities` list in `GameState` to simplify the pipeline iteration even further.

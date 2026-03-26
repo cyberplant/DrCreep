@@ -106,11 +106,15 @@ class CastleParser:
                     l_count += 8; offset += 8
                 offset += 1
             elif func == E_OBJECT_TELEPORT:
-                color = (self.data[offset+2] + 2) % 16
-                room.objects.append({'type': 'teleport', 'x': self.data[offset], 'y': self.data[offset+1], 'target': self.data[offset+2], 'color': color}); offset += 3
+                target_val = self.data[offset+2]
+                color = (target_val + 2) % 16
+                room.objects.append({'type': 'teleport', 'x': self.data[offset], 'y': self.data[offset+1], 'target': target_val, 'color': color}); offset += 3
+                t_count = 0
                 while self.data[offset] != 0:
                     if self._read_word(offset) in VALID_IDS: break
-                    room.objects.append({'type': 'teleport_target', 'x': self.data[offset], 'y': self.data[offset+1], 'color': color}); offset += 2
+                    t_color = (target_val + 2 + t_count) % 16
+                    if t_color == 0: t_color = 1 # Avoid black
+                    room.objects.append({'type': 'teleport_target', 'x': self.data[offset], 'y': self.data[offset+1], 'color': t_color}); offset += 2; t_count += 1
                 offset += 1
             elif func == E_OBJECT_KEY:
                 while self.data[offset] != 0:
