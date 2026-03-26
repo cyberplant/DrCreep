@@ -11,12 +11,12 @@ class LightningMachineComponent(BaseComponent):
         super().__init__(data)
         self.system_id = data.get('system_id', 0)
 
-    def on_collide(self, engine, room, entity):
-        """Reset player if they walk into an active lightning bolt."""
-        if engine.room_states[entity.room_id]['lightning'].get(self.system_id):
-            # Check for vertical beam contact
-            if abs(entity.x - (self.x + 2)) < 12 and self.y <= entity.y <= self.y + 160:
-                engine._reset_player(entity)
+    def process_proposal(self, engine, room, current_state, proposal):
+        """Check for contact with an active lightning bolt."""
+        if engine.room_states[proposal['room_id']]['lightning'].get(self.system_id):
+            # Check for vertical beam contact: same X, within Y range
+            if abs(proposal['x'] - (self.x + 2)) < 12 and self.y <= proposal['y'] <= self.y + 160:
+                proposal['is_dead'] = True
 
     def get_asset(self, tick):
         return self.ASSET
@@ -24,30 +24,31 @@ class LightningMachineComponent(BaseComponent):
 class LightningSwitchComponent(BaseComponent):
     """
     Toggles lightning systems in the room.
-    - sid: ID of the system it controls directly.
-    - targets: IDs of other systems that will match the new state.
     """
     def __init__(self, data):
         super().__init__(data)
         self.system_id = data.get('system_id', 0)
         self.targets = data.get('targets', [])
 
-    def on_interact(self, engine, room, player, commands):
-        """Toggle system state on action button press."""
-        if commands.get('action'):
-            if player.room_id == 4: # Special logic for tutorial room 4
-                self.timer = 8
-                for fobj in room.objects:
-                    if fobj.type == 'forcefield':
-                        fobj.state = 0
-            else:
-                sid = self.system_id
-                targets = self.targets
-                rs = engine.room_states[player.room_id]['lightning']
-                if sid not in rs: rs[sid] = True
-                rs[sid] = not rs[sid]
-                # Sync target systems
-                for tid in targets:
-                    if tid != 0xFF: rs[tid] = rs[sid]
+    def process_proposal(self, engine, room, current_state, proposal):
+        """Handle interaction via pipeline."""
+        dist_x, dist_y = abs(proposal['x'] - self.x), abs((proposal['y'] - 16) - self.y)
+        if dist_x < 16 and dist_y < 48:
+            if proposal.get('commands', {}).get('action'):
+                # Special logic for tutorial room 4
+                if proposal['room_id'] == 4:
+                    self.timer = 8
+                    for fobj in room.objects:
+                        if fobj.type == 'forcefield':
+                            fobj.state = 0
+                else:
+                    sid = self.system_id
+                    targets = self.targets
+                    rs = engine.room_states[proposal['room_id']]['lightning']
+                    if sid not in rs: rs[sid] = True
+                    rs[sid] = not rs[sid]
+                    for tid in targets:
+                        if tid != 0xFF: rs[tid] = rs[sid]
+
     def get_asset(self, tick):
         return ["[cyan][[yellow]T[/]][/]"]

@@ -6,7 +6,7 @@ class FrankieEntity:
     Logic:
     - Tracks player horizontally.
     - Can use ladders and poles if player is at a different Y level.
-    - Resets player on contact.
+    - Resets player on contact via process_proposal.
     """
     def __init__(self, data):
         self.x = data['x']
@@ -16,6 +16,7 @@ class FrankieEntity:
         self.is_moving = data.get('is_moving', True)
         self.facing_left = data.get('facing_left', False)
         self.move_mode = data.get('move_mode', 'walkway')
+        self.type = 'frankie_entity'
 
     def update(self, engine, tick):
         """Pathfinding logic for Frankenstein's monster."""
@@ -53,10 +54,11 @@ class FrankieEntity:
             if self.x > 180: self.vx = -0.5
             self.facing_left = (self.vx < 0)
 
-        # Contact damage
-        for p in engine.state.players:
-            if p.room_id == self.room_id and abs(p.x - self.x) < 12 and abs(p.y - self.y) < 12:
-                engine._reset_player(p)
+    def process_proposal(self, engine, room, current_state, proposal):
+        """Check for contact with player and kill if touching."""
+        if proposal['room_id'] == self.room_id:
+            if abs(proposal['x'] - self.x) < 12 and abs(proposal['y'] - self.y) < 12:
+                proposal['is_dead'] = True
 
     def serialize(self):
         """Entity state serialization."""
@@ -71,13 +73,16 @@ class FrankieComponent(BaseComponent):
         super().__init__(data)
         self.state = 0 # 0=sleeping, 1=released
 
-    def on_collide(self, engine, room, entity):
+    def process_proposal(self, engine, room, current_state, proposal):
         """Detect player presence on the same level."""
         if self.state == 0:
-            if abs(entity.y - (self.y + 32)) < 24:
+            if abs(proposal['y'] - (self.y + 32)) < 24:
                 self.state = 1
                 engine.state.frankies.append(FrankieEntity({
                     'x': self.x + 12, 
                     'y': self.y + 32, 
-                    'room_id': entity.room_id
+                    'room_id': proposal['room_id']
                 }))
+    
+    def get_asset(self, tick):
+        return None # Invisible trigger

@@ -4,7 +4,7 @@ class ProjectileEntity:
     """
     Moving projectile (Ray Gun bolt).
     - Moves horizontally until it hits a player or screen boundary.
-    - Resets player on contact.
+    - Resets player on contact via process_proposal.
     """
     def __init__(self, data):
         self.x = data['x']
@@ -12,18 +12,19 @@ class ProjectileEntity:
         self.vx = data['vx']
         self.room_id = data['room_id']
         self.active = True
+        self.type = 'projectile_entity'
 
     def update(self, engine, tick):
         self.x += self.vx
-        # Hit check
-        for p in engine.state.players:
-            if p.room_id == self.room_id and abs(p.x - self.x) < 12 and abs(p.y - self.y) < 12:
-                engine._reset_player(p)
-                self.active = False
-                return
-        # Boundary check
         if self.x < 0 or self.x > 320:
             self.active = False
+
+    def process_proposal(self, engine, room, current_state, proposal):
+        """Check for contact with player and kill if touching."""
+        if proposal['room_id'] == self.room_id:
+            if abs(proposal['x'] - self.x) < 12 and abs(proposal['y'] - self.y) < 12:
+                proposal['is_dead'] = True
+                self.active = False # Bolt disappears on hit
 
     def serialize(self):
         return {'x': self.x, 'y': self.y, 'room_id': self.room_id}
@@ -51,16 +52,16 @@ class RaygunComponent(BaseComponent):
             elif self.y <= self.initial_y:
                 self.direction = 1
 
-    def on_collide(self, engine, room, entity):
+    def process_proposal(self, engine, room, current_state, proposal):
         """Automatic firing logic when entity is in line of sight."""
-        if abs(entity.y - self.y) < 16 and self.timer == 0:
+        if abs(proposal['y'] - self.y) < 16 and self.timer == 0:
             self.timer = 100
-            direction = 1 if entity.x > self.x else -1
+            direction = 1 if proposal['x'] > self.x else -1
             engine.state.projectiles.append(ProjectileEntity({
                 'x': self.x + (16*direction), 
                 'y': self.y, 
                 'vx': 3.0 * direction, 
-                'room_id': entity.room_id
+                'room_id': proposal['room_id']
             }))
 
     def get_asset(self, tick):
@@ -73,21 +74,24 @@ class RaygunSwitchComponent(BaseComponent):
             " [cyan]O[/] ",
             " [cyan]v[/] "
         ]
-    def on_interact(self, engine, room, player, commands):
-        """Handle directional and action inputs to control ray guns."""
-        for rgun in room.objects:
-            if rgun.type == 'raygun':
-                if commands.get('up'): rgun.y -= 2; return
-                if commands.get('down'): rgun.y += 2; return
-                if commands.get('action'):
-                    if rgun.timer == 0:
-                        rgun.timer = 100
-                        engine.state.projectiles.append(ProjectileEntity({
-                            'x': rgun.x + 16, 
-                            'y': rgun.y, 
-                            'vx': 3.0, 
-                            'room_id': player.room_id
-                        }))
-                    return
+    def process_proposal(self, engine, room, current_state, proposal):
+        """Handle directional and action inputs to control ray guns via proposal pipeline."""
+        dist_x, dist_y = abs(proposal['x'] - self.x), abs((proposal['y'] - 16) - self.y)
+        if dist_x < 16 and dist_y < 48:
+            commands = proposal.get('commands', {})
+            for rgun in room.objects:
+                if rgun.type == 'raygun':
+                    if commands.get('up'): rgun.y -= 2
+                    if commands.get('down'): rgun.y += 2
+                    if commands.get('action'):
+                        if rgun.timer == 0:
+                            rgun.timer = 100
+                            engine.state.projectiles.append(ProjectileEntity({
+                                'x': rgun.x + 16, 
+                                'y': rgun.y, 
+                                'vx': 3.0, 
+                                'room_id': proposal['room_id']
+                            }))
+
     def get_asset(self, tick):
         return self.ASSET

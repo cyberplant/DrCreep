@@ -26,12 +26,12 @@ class BaseComponent:
         """Triggered when the player attempts to use or interact with the object."""
         pass
 
-    def filter_movement(self, engine, room, entity, dx, dy):
+    def process_proposal(self, engine, room, current_state, proposal):
         """
-        Allows the component to influence movement intent.
-        Returns: (modified_dx, modified_dy, stop_flag)
+        Allows the component to inspect and modify a proposed state change.
+        proposal: { 'x': new_x, 'y': new_y, 'room_id': new_room_id, 'is_dead': bool, ... }
         """
-        return dx, dy, False
+        pass
 
     def get_asset(self, tick):
         """Returns the current ASCII frame for rendering."""

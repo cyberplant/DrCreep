@@ -287,12 +287,21 @@ class GameBoard(Static):
 
         # 4. Player
         pgx, pgy = px(player['x']), py(player['y'])
-        p_anim = "idle"
-        if player.get('is_acting', 0) > 0: p_anim = "action"
-        elif player.get('is_moving', False): p_anim = "walk_left" if player.get('facing_left') else "walk_right"
-        
-        teleport_stage = player.get('is_teleporting', 0)
-        self.draw_asset(grid, pgx - 1, pgy - 5, "player", anim_name=p_anim, tick=tick)
+        if player.get('is_dead'):
+            # Disintegration effect
+            import random
+            chars = ["*", ".", " ", "x", "+"]
+            for dy in range(-5, 1):
+                for dx in range(-2, 3):
+                    if random.random() > 0.3:
+                        tx, ty = pgx + dx, pgy + dy
+                        if 0 <= ty < height and 0 <= tx < width:
+                            grid[ty][tx] = (random.choice(chars), random.choice([1, 7, 11, 15]))
+        else:
+            p_anim = "idle"
+            if player.get('is_acting', 0) > 0: p_anim = "action"
+            elif player.get('is_moving', False): p_anim = "walk_left" if player.get('facing_left') else "walk_right"
+            self.draw_asset(grid, pgx - 1, pgy - 5, "player", anim_name=p_anim, tick=tick)
 
         res = Text()
         border = "+" + "-" * width + "+\n"
@@ -305,10 +314,36 @@ class GameBoard(Static):
         res.append(border)
         self.update(res)
 
+class DebugSidebar(Static):
+    def update_info(self, state):
+        if not state or not state.get('debug_mode'):
+            self.styles.display = "none"
+            return
+        
+        self.styles.display = "block"
+        player = state['players'][0]
+        room_id = str(player['room_id'])
+        room = state['rooms'].get(room_id)
+        if not room: return
+
+        res = Text("--- DEBUG: ROOM OBJECTS ---\n", style="bold yellow")
+        for i, obj in enumerate(room['objects']):
+            line = f"{i:02}: {obj['type']:<15} Pos:({obj['x']:>3},{obj['y']:>3}) State:{obj['state']}\n"
+            res.append(line, style="white")
+            props = obj.get('properties', {})
+            extra = ""
+            if 'system_id' in props: extra += f"  - SysID: {props['system_id']}"
+            if obj.get('timer', 0) > 0: extra += f"  - Timer: {obj['timer']}"
+            if extra: res.append(extra + "\n", style="cyan")
+        
+        self.update(res)
+
 class CreepApp(App):
     CSS = """
     GameStatus { background: $boost; color: white; height: 1; padding: 0 1; }
+    #game-container { layout: horizontal; }
     GameBoard { width: 84; height: 54; border: solid green; margin: 0 2; content-align: left top; }
+    DebugSidebar { width: 40; height: 54; border: solid blue; padding: 1; overflow-y: scroll; }
     VictoryScreen { width: 84; height: 54; border: solid yellow; margin: 0 2; content-align: center middle; display: none; }
     """
     BINDINGS = [
@@ -320,6 +355,15 @@ class CreepApp(App):
     def __init__(self, host='127.0.0.1', port=4242):
         super().__init__()
         self.host, self.port, self.sock, self.state, self.running = host, port, None, {}, False
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        yield GameStatus()
+        with Container(id="game-container"):
+            yield GameBoard()
+            yield DebugSidebar()
+            yield VictoryScreen()
+        yield Footer()
 
     def on_mount(self) -> None:
         try:
@@ -343,6 +387,7 @@ class CreepApp(App):
     def _refresh_ui(self):
         if self.state:
             self.query_one(GameStatus).update_status(self.state)
+            self.query_one(DebugSidebar).update_info(self.state)
             is_victory = self.state.get('victory', False)
             if is_victory:
                 self.query_one(GameBoard).styles.display = "none"
