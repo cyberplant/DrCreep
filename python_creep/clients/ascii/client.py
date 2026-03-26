@@ -411,9 +411,6 @@ class CreepApp(App):
             try: self.sock.sendall((json.dumps(msg) + "\n").encode())
             except: self.running = False
 
-    def compose(self) -> ComposeResult:
-        yield Header(); yield GameStatus(); yield Vertical(GameBoard(), VictoryScreen()); yield Footer()
-
 if __name__ == "__main__":
     try:
         app = CreepApp()
