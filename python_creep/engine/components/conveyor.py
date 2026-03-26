@@ -24,14 +24,13 @@ class ConveyorComponent(BaseComponent):
         super().__init__(data)
         self.state = data.get('state', 1)
 
-    def filter_movement(self, engine, room, entity, dx, dy):
+    def process_proposal(self, engine, room, player, proposal):
         """Applies horizontal push to entities standing on the belt."""
         if self.state != 1: # ON
             # Check if entity is on the belt
-            if abs(self.y - (entity.y - 32)) < 8 and self.x - 4 <= entity.x <= self.x + 36:
+            if abs(self.y - (proposal['y'] - 32)) < 8 and self.x - 4 <= proposal['x'] <= self.x + 36:
                 push = -1.5 if self.state == 0 else 1.5
-                return dx + push, dy, False
-        return dx, dy, False
+                proposal['x'] += push
 
     def get_asset(self, tick):
         """Returns animated or static belt frame."""

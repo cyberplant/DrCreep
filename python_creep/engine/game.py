@@ -103,8 +103,6 @@ class GameEngine:
             proposal = {
                 'x': player.x + dx,
                 'y': player.y + dy,
-                'vx': dx,
-                'vy': dy,
                 'room_id': player.room_id,
                 'move_mode': player.move_mode,
                 'keys': player.keys[:],
