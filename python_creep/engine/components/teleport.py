@@ -46,12 +46,10 @@ class TeleportComponent(BaseComponent):
                 for rid, rstate in engine.state.rooms.items():
                     for tobj in rstate.objects:
                         if tobj.type == 'teleport_target' and tobj.properties['color'] == tc:
-                            # Modify proposal directly to jump
                             proposal['room_id'] = rid
                             proposal['x'] = tobj.x
                             proposal['y'] = tobj.y + 32
-                            # Signal teleporting delay/animation if needed
-                            # For now, let's keep it simple jump as requested
+                            proposal['has_support'] = True
                             return
 
     def get_asset(self, tick):

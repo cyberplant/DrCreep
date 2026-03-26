@@ -77,23 +77,76 @@ class GameEngine:
 
     def _update(self):
         self.state.current_tick += 1
+        
+        # 1. Update all static objects first (animations, timers)
         for room in self.state.rooms.values():
             for obj in room.objects:
                 obj.update(self, room, self.state.current_tick)
 
-        for m in self.state.mummies:
-            m.update(self, self.state.current_tick)
-                    
-        for f in self.state.frankies:
-            f.update(self, self.state.current_tick)
-                    
+        # 2. Update dynamic autonomous entities (Mummies, Frankies, Proj)
+        for m in self.state.mummies: m.update(self, self.state.current_tick)
+        for f in self.state.frankies: f.update(self, self.state.current_tick)
         self.state.projectiles = [p for p in self.state.projectiles if p.active]
-        for proj in self.state.projectiles:
-            proj.update(self, self.state.current_tick)
+        for proj in self.state.projectiles: proj.update(self, self.state.current_tick)
 
+        # 3. Process Players via Pipeline
         for player in self.state.players:
             cmds = self.pending_commands.get(player.id, {})
-            player.update(self, self.state.current_tick, cmds)
+            
+            # Initial intent (discrete movement, no acceleration)
+            dx, dy = 0, 0
+            if cmds.get('left'): dx = -2.0
+            elif cmds.get('right'): dx = 2.0
+            if cmds.get('up'): dy = -2.0
+            elif cmds.get('down'): dy = 2.0
+
+            proposal = {
+                'x': player.x + dx,
+                'y': player.y + dy,
+                'room_id': player.room_id,
+                'move_mode': player.move_mode,
+                'keys': player.keys[:],
+                'is_dead': False,
+                'is_moving': (dx != 0 or dy != 0),
+                'is_acting': 10 if cmds.get('action') else max(0, player.is_acting - 1),
+                'facing_left': (dx < 0) if dx != 0 else player.facing_left,
+                'commands': cmds,
+                'has_support': False # Must be validated by components
+            }
+
+            room = self.state.rooms.get(player.room_id)
+            if room:
+                # Pipeline through all room objects
+                for obj in room.objects:
+                    obj.process_proposal(self, room, player, proposal)
+                
+                # Pipeline through other entities
+                for m in self.state.mummies:
+                    if hasattr(m, 'process_proposal'): m.process_proposal(self, room, player, proposal)
+                for f in self.state.frankies:
+                    if hasattr(f, 'process_proposal'): f.process_proposal(self, room, player, proposal)
+                for proj in self.state.projectiles:
+                    if hasattr(proj, 'process_proposal'): proj.process_proposal(self, room, player, proposal)
+
+            # Resolve Death (Immediate Respawn)
+            if proposal['is_dead']:
+                player.room_id = 0
+                player.x, player.y = 20, 192
+                player.move_mode = 'walkway'
+                player.is_moving = False
+                continue
+
+            # Fall if no support (discrete fall)
+            if not proposal['has_support']:
+                proposal['y'] += 4
+                proposal['move_mode'] = 'walkway'
+
+            # World Boundaries
+            proposal['x'] = max(16, min(304, proposal['x']))
+            proposal['y'] = max(0, min(200, proposal['y']))
+
+            # Apply final state
+            player.apply_proposal(proposal)
         
         self.pending_commands = {}
 
