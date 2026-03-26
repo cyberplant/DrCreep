@@ -15,6 +15,7 @@ class WalkwayComponent(BaseComponent):
         """If player is within X bounds and close to Y, treat as support."""
         if proposal['move_mode'] == 'walkway':
             if self.x <= proposal['x'] <= self.end_x:
-                if abs(proposal['y'] - self.y) < 4:
-                    proposal['y'] = self.y
+                # Check if player is within the walkway's vertical range (8 units)
+                if self.y <= proposal['y'] <= self.y + 8:
+                    proposal['y'] = self.y # Snap to top surface
                     proposal['has_support'] = True

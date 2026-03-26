@@ -137,10 +137,11 @@ class GameEngine:
                 player.is_moving = False
                 continue
 
-            # Fall if no support (discrete fall)
+            # No Gravity: Halt if no support (blocked from walking off edges)
             if not proposal['has_support']:
-                proposal['y'] += 4
-                proposal['move_mode'] = 'walkway'
+                proposal['y'] = player.y
+                proposal['x'] = player.x
+                proposal['move_mode'] = player.move_mode
 
             # World Boundaries
             proposal['x'] = max(16, min(304, proposal['x']))

@@ -17,18 +17,16 @@ class MummyEntity:
         self.type = 'mummy_entity'
 
     def update(self, engine, tick):
-        """Horizontal tracking of the player with gravity and walkway support."""
+        """Horizontal tracking of the player with walkway support."""
         room = engine.state.rooms.get(self.room_id)
         target_p = next((p for p in engine.state.players if p.room_id == self.room_id), None)
         self.is_moving = False
         
-        # Apply gravity
-        self.y += 2
         has_support = False
         for obj in room.objects:
             if obj.type == 'walkway':
                 if obj.x - 4 <= self.x <= obj.x + (obj.length * 4) + 4:
-                    if abs(self.y - obj.y) < 4:
+                    if obj.y <= self.y <= obj.y + 8:
                         self.y = obj.y
                         has_support = True
                         break
@@ -42,7 +40,7 @@ class MummyEntity:
                 next_x = self.x + vx * 8
                 can_move = False
                 for obj in room.objects:
-                    if obj.type == 'walkway' and abs(self.y - obj.y) < 4:
+                    if obj.type == 'walkway' and obj.y == self.y:
                         if obj.x <= next_x <= obj.x + (obj.length * 4):
                             can_move = True
                             break

@@ -175,13 +175,15 @@ class GameBoard(Static):
                     for i, char in enumerate(txt):
                         if i < width: grid[gy][i] = (char, 7)
 
-        # 1. Walkways
+        # 1. Walkways (Thick 2-row rendering for 3D depth)
         for obj in room['objects']:
             if obj['type'] == 'walkway':
                 gx, gy = px(obj['x']), py(obj['y'])
-                if 0 <= gy < height:
-                    for i in range(obj['properties']['length'] * 2):
-                        if 0 <= gx + i < width: grid[gy][gx+i] = ('=', room_color_id)
+                for row_offset, char in [(0, '='), (1, '/')]:
+                    ty = gy + row_offset
+                    if 0 <= ty < height:
+                        for i in range(obj['properties']['length'] * 2):
+                            if 0 <= gx + i < width: grid[ty][gx+i] = (char, room_color_id)
 
         # 2. Objects
         for obj in room['objects']:
@@ -197,70 +199,71 @@ class GameBoard(Static):
             elif type == 'door':
                 # Get linked room color for [next_room_color]
                 nr_id = str(props.get('link_room', ''))
-                nr_color = "white"
                 nr_data = state['rooms'].get(nr_id)
-                # Note: Currently rooms in state dict don't have 'color' field broadcasted.
-                # I will assume white for now and we should update broadcast if we want it perfect.
-                
-                self.draw_asset(grid, gx, gy, "door", state=obj_state, room_color=room_color_name, next_room_color=nr_color)
+                nr_color_id = nr_data.get('color', 1) if nr_data else 1
+                nr_color = C64_COLOR_NAMES.get(nr_color_id, "white")
+                self.draw_asset(grid, gx, gy - 7, "door", state=obj_state, room_color=room_color_name, next_room_color=nr_color)
+
             elif type in ['ladder', 'pole']:
                 char = '#' if type == 'ladder' else '|'
+                # Draw from top (gy) downwards through the walkway thickness
                 l_len = props['length'] * 2
-                for i in range(l_len):
+                for i in range(l_len + 2): # Add 2 rows to ensure it punches through walkways
                     ty = gy + i
                     if 0 <= ty < height and 0 <= gx < width:
-                        if grid[ty][gx][0] == ' ': grid[ty][gx] = (char, 1)
+                        grid[ty][gx] = (char, 1)
             elif type == 'key':
                 obj_col = C64_COLOR_NAMES.get(int(props['color']) & 0xF, "white")
-                self.draw_asset(grid, gx, gy, "key", obj_color=obj_col)
+                self.draw_asset(grid, gx, gy - 1, "key", obj_color=obj_col)
             elif type == 'lock':
                 obj_col = C64_COLOR_NAMES.get(int(props['color']) & 0xF, "white")
-                self.draw_asset(grid, gx, gy, "lock", obj_color=obj_col)
+                self.draw_asset(grid, gx, gy - 3, "lock", obj_color=obj_col)
             elif type == 'teleport':
                 obj_col = C64_COLOR_NAMES.get(obj_state, "white")
-                self.draw_asset(grid, gx, gy, "teleport_cabin", obj_color=obj_col)
+                self.draw_asset(grid, gx, gy - 7, "teleport_cabin", obj_color=obj_col)
             elif type == 'teleport_target':
                 obj_col = C64_COLOR_NAMES.get(int(props['color']) & 0xF, "white")
-                self.draw_asset(grid, gx, gy, "teleport_target", obj_color=obj_col)
+                self.draw_asset(grid, gx, gy - 1, "teleport_target", obj_color=obj_col)
             elif type == 'doorbell':
-                self.draw_asset(grid, gx, gy, "doorbell", room_color=room_color_name)
+                self.draw_asset(grid, gx, gy - 3, "doorbell", room_color=room_color_name)
             elif type == 'forcefield_switch':
-                self.draw_asset(grid, gx, gy, "forcefield_switch")
+                self.draw_asset(grid, gx, gy - 3, "forcefield_switch")
             elif type == 'forcefield':
-                self.draw_asset(grid, gx, gy, "forcefield", state=obj_state)
+                self.draw_asset(grid, gx, gy - 7, "forcefield", state=obj_state)
             elif type == 'mummy_release':
-                self.draw_asset(grid, gx, gy, "mummy_release", room_color=room_color_name)
+                self.draw_asset(grid, gx, gy - 1, "mummy_release", room_color=room_color_name)
             elif type == 'mummy_tomb':
-                self.draw_asset(grid, gx, gy, "mummy_tomb")
+                self.draw_asset(grid, gx, gy - 5, "mummy_tomb")
             elif type == 'lightning_machine':
-                self.draw_asset(grid, gx, gy, "lightning_machine")
+                self.draw_asset(grid, gx, gy - 1, "lightning_machine")
                 if lightning_systems.get(str(props.get('system_id', 0))):
                     import random
                     chars = ["\\", "|", "Y", "/"]
-                    for ty in range(gy, height):
-                        if grid[ty][gx][0] == '=' and ty > gy: break
+                    for ty in range(gy + 1, height):
+                        if grid[ty][gx][0] == '=' and ty > gy + 1: break
                         for dx_off in range(-1, 2):
                             tx = gx + dx_off
                             if 0 <= tx < width:
-                                if grid[ty][tx][0] == '=' and ty > gy: continue
+                                if grid[ty][tx][0] == '=' and ty > gy + 1: continue
                                 grid[ty][tx] = (random.choice(chars), 7)
             elif type == 'trapdoor':
                 if obj_state == 1:
                     for dx in range(4):
                         if 0 <= gy < height and 0 <= gx + dx < width: grid[gy][gx+dx] = (' ', 0)
+                        if 0 <= gy + 1 < height and 0 <= gx + dx < width: grid[gy+1][gx+dx] = (' ', 0)
             elif type == 'trapdoor_switch':
-                self.draw_asset(grid, gx, gy, "trapdoor_switch")
+                self.draw_asset(grid, gx, gy - 1, "trapdoor_switch")
             elif type == 'conveyor':
                 anim_type = "right" if obj_state == 2 else ("left" if obj_state == 0 else "off")
                 self.draw_asset(grid, gx, gy, "conveyor", anim_name=anim_type, tick=tick)
             elif type == 'conveyor_switch':
-                self.draw_asset(grid, gx, gy, "conveyor_switch", obj_color=C64_COLOR_NAMES.get(5 if obj_state == 2 else (2 if obj_state == 0 else 1)))
+                self.draw_asset(grid, gx, gy - 3, "conveyor_switch", obj_color=C64_COLOR_NAMES.get(5 if obj_state == 2 else (2 if obj_state == 0 else 1)))
             elif type == 'raygun':
-                self.draw_asset(grid, gx, gy, "raygun")
+                self.draw_asset(grid, gx, gy - 1, "raygun")
             elif type == 'raygun_switch':
-                self.draw_asset(grid, gx, gy, "raygun_switch")
+                self.draw_asset(grid, gx, gy - 3, "raygun_switch")
             elif type == 'lightning_switch':
-                self.draw_asset(grid, gx, gy, "lightning_switch")
+                self.draw_asset(grid, gx, gy - 3, "lightning_switch")
 
         # 3. Mummies and Frankensteins
         for m in state.get('mummies', []):

@@ -97,12 +97,13 @@ class PNGExporter:
             
             if obj_type == 'walkway':
                 for i in range(obj['length']):
-                    self.draw_char(img, x_char + i, y_char, 64, floor_color) # Screen code 64 is often a horizontal bar
+                    self.draw_char(img, x_char + i, y_char, 64, floor_color) # Top
+                    self.draw_char(img, x_char + i, y_char + 1, 105, floor_color) # Front face (depth)
             elif obj_type == 'ladder':
-                for i in range(obj['length']):
+                for i in range(obj['length'] + 1): # Extra length to connect
                     self.draw_char(img, x_char, y_char + i, '#', floor_color)
             elif obj_type == 'pole':
-                for i in range(obj['length']):
+                for i in range(obj['length'] + 1): # Extra length to connect
                     self.draw_char(img, x_char, y_char + i, ']', floor_color)
             elif obj_type == 'door':
                 color = 2 if obj['is_exit'] else floor_color

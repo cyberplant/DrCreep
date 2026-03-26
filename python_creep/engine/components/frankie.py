@@ -38,18 +38,16 @@ class FrankieEntity:
                     self.move_mode = 'ladder'
                     break
 
-        # 2. Horizontal tracking and gravity
+        # 2. Horizontal tracking
         if not on_ladder:
             self.move_mode = 'walkway'
-            # Apply gravity
-            self.y += 2
             
-            # Check for walkway support and boundaries
+            # Check for walkway support
             for obj in room.objects:
                 if obj.type == 'walkway':
                     if obj.x - 4 <= self.x <= obj.x + (obj.length * 4) + 4:
-                        if abs(self.y - obj.y) < 4:
-                            self.y = obj.y
+                        if obj.y <= self.y <= obj.y + 8:
+                            self.y = obj.y # Snap to top
                             has_support = True
                             break
             
@@ -61,7 +59,7 @@ class FrankieEntity:
                 next_x = self.x + self.vx * 10 # Look ahead
                 can_move = False
                 for obj in room.objects:
-                    if obj.type == 'walkway' and abs(self.y - obj.y) < 4:
+                    if obj.type == 'walkway' and obj.y == self.y:
                         if obj.x <= next_x <= obj.x + (obj.length * 4):
                             can_move = True
                             break
