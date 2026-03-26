@@ -137,17 +137,42 @@ class GameBoard(Static):
 
         width, height = 80, 50
         grid = [[(' ', 1) for _ in range(width)] for _ in range(height)]
-        floor_color_id = 1 # fallback
-        # Get actual room floor color
-        # Since room color is not directly in broadcast 'rooms' dict root yet (only lightning_systems and objects)
-        # We'll use white as default room_color until we add it to broadcast
+        debug_mode = state.get('debug_mode', False)
         room_color_name = "white"
-        
         lightning_systems = room.get('lightning_systems', {})
         tick = state['tick']
 
         def py(y): return (int(y) * 50) // 200
         def px(x): return 2*((int(x) >> 2) - 4)
+
+        if debug_mode:
+            # Draw Grid every 10 world units
+            for wy in range(0, 201, 10):
+                gy = py(wy)
+                if 0 <= gy < height:
+                    for gx in range(width):
+                        if grid[gy][gx][0] == ' ': grid[gy][gx] = ('·', 11)
+            for wx in range(0, 321, 10):
+                gx = px(wx)
+                if 0 <= gx < width:
+                    for gy in range(height):
+                        if grid[gy][gx][0] == ' ': grid[gy][gx] = ('·', 11)
+            
+            # Draw Horizontal Ruler (Top)
+            for wx in range(0, 321, 20):
+                gx = px(wx)
+                if 0 <= gx < width:
+                    txt = str(wx)
+                    for i, char in enumerate(txt):
+                        if gx + i < width: grid[0][gx+i] = (char, 7) # Yellow ruler
+            
+            # Draw Vertical Ruler (Left)
+            for wy in range(0, 201, 20):
+                gy = py(wy)
+                if 0 <= gy < height:
+                    txt = str(wy)
+                    for i, char in enumerate(txt):
+                        if i < width: grid[gy][i] = (char, 7)
 
         # 1. Walkways
         for obj in room['objects']:
@@ -262,12 +287,21 @@ class GameBoard(Static):
 
         # 4. Player
         pgx, pgy = px(player['x']), py(player['y'])
-        p_anim = "idle"
-        if player.get('is_acting', 0) > 0: p_anim = "action"
-        elif player.get('is_moving', False): p_anim = "walk_left" if player.get('facing_left') else "walk_right"
-        
-        teleport_stage = player.get('is_teleporting', 0)
-        self.draw_asset(grid, pgx - 1, pgy - 5, "player", anim_name=p_anim, tick=tick)
+        if player.get('is_dead'):
+            # Disintegration effect
+            import random
+            chars = ["*", ".", " ", "x", "+"]
+            for dy in range(-5, 1):
+                for dx in range(-2, 3):
+                    if random.random() > 0.3:
+                        tx, ty = pgx + dx, pgy + dy
+                        if 0 <= ty < height and 0 <= tx < width:
+                            grid[ty][tx] = (random.choice(chars), random.choice([1, 7, 11, 15]))
+        else:
+            p_anim = "idle"
+            if player.get('is_acting', 0) > 0: p_anim = "action"
+            elif player.get('is_moving', False): p_anim = "walk_left" if player.get('facing_left') else "walk_right"
+            self.draw_asset(grid, pgx - 1, pgy - 5, "player", anim_name=p_anim, tick=tick)
 
         res = Text()
         border = "+" + "-" * width + "+\n"
@@ -280,10 +314,57 @@ class GameBoard(Static):
         res.append(border)
         self.update(res)
 
+class DebugSidebar(Static):
+    def update_info(self, state):
+        if not state or not state.get('debug_mode'):
+            self.styles.display = "none"
+            return
+        
+        self.styles.display = "block"
+        player = state['players'][0]
+        room_id = str(player['room_id'])
+        room = state['rooms'].get(room_id)
+        if not room: return
+
+        res = Text("--- DEBUG: ROOM OBJECTS ---\n", style="bold yellow")
+        
+        # Room global systems
+        l_sys = room.get('lightning_systems', {})
+        if l_sys:
+            res.append("Lightning Systems State:\n", style="bold cyan")
+            for sid, status in l_sys.items():
+                res.append(f"  ID {sid}: {'ON' if status else 'OFF'}\n", style="green" if status else "red")
+
+        for i, obj in enumerate(room['objects']):
+            # Basic Header
+            res.append(f"\n{i:02}: {obj['type'].upper()}\n", style="bold white underline")
+            res.append(f"  Pos: ({obj['x']}, {obj['y']})  State: {obj['state']}\n", style="white")
+            
+            # End position calculation for environment
+            props = obj.get('properties', {})
+            if 'length' in props:
+                length = props['length']
+                if obj['type'] == 'walkway':
+                    res.append(f"  End X: {obj['x'] + (length * 4)}\n", style="yellow")
+                elif obj['type'] in ('ladder', 'pole'):
+                    res.append(f"  End Y: {obj['y'] + (length * 8)}\n", style="yellow")
+
+            # Dump ALL properties
+            for k, v in props.items():
+                if k not in ('x', 'y', 'type', 'obj_index'):
+                    res.append(f"  - {k}: {v}\n", style="cyan")
+            
+            if obj.get('timer', 0) > 0:
+                res.append(f"  - TIMER: {obj['timer']}\n", style="bold red")
+        
+        self.update(res)
+
 class CreepApp(App):
     CSS = """
     GameStatus { background: $boost; color: white; height: 1; padding: 0 1; }
+    #game-container { layout: horizontal; }
     GameBoard { width: 84; height: 54; border: solid green; margin: 0 2; content-align: left top; }
+    DebugSidebar { width: 60; height: 54; border: solid blue; padding: 1; overflow-y: scroll; }
     VictoryScreen { width: 84; height: 54; border: solid yellow; margin: 0 2; content-align: center middle; display: none; }
     """
     BINDINGS = [
@@ -295,6 +376,15 @@ class CreepApp(App):
     def __init__(self, host='127.0.0.1', port=4242):
         super().__init__()
         self.host, self.port, self.sock, self.state, self.running = host, port, None, {}, False
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        yield GameStatus()
+        with Container(id="game-container"):
+            yield GameBoard()
+            yield DebugSidebar()
+            yield VictoryScreen()
+        yield Footer()
 
     def on_mount(self) -> None:
         try:
@@ -318,6 +408,7 @@ class CreepApp(App):
     def _refresh_ui(self):
         if self.state:
             self.query_one(GameStatus).update_status(self.state)
+            self.query_one(DebugSidebar).update_info(self.state)
             is_victory = self.state.get('victory', False)
             if is_victory:
                 self.query_one(GameBoard).styles.display = "none"
@@ -340,9 +431,6 @@ class CreepApp(App):
             msg = {'type': 'INPUT', 'player_id': 0, 'commands': commands}
             try: self.sock.sendall((json.dumps(msg) + "\n").encode())
             except: self.running = False
-
-    def compose(self) -> ComposeResult:
-        yield Header(); yield GameStatus(); yield Vertical(GameBoard(), VictoryScreen()); yield Footer()
 
 if __name__ == "__main__":
     try:
