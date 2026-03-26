@@ -327,14 +327,35 @@ class DebugSidebar(Static):
         if not room: return
 
         res = Text("--- DEBUG: ROOM OBJECTS ---\n", style="bold yellow")
+        
+        # Room global systems
+        l_sys = room.get('lightning_systems', {})
+        if l_sys:
+            res.append("Lightning Systems State:\n", style="bold cyan")
+            for sid, status in l_sys.items():
+                res.append(f"  ID {sid}: {'ON' if status else 'OFF'}\n", style="green" if status else "red")
+
         for i, obj in enumerate(room['objects']):
-            line = f"{i:02}: {obj['type']:<15} Pos:({obj['x']:>3},{obj['y']:>3}) State:{obj['state']}\n"
-            res.append(line, style="white")
+            # Basic Header
+            res.append(f"\n{i:02}: {obj['type'].upper()}\n", style="bold white underline")
+            res.append(f"  Pos: ({obj['x']}, {obj['y']})  State: {obj['state']}\n", style="white")
+            
+            # End position calculation for environment
             props = obj.get('properties', {})
-            extra = ""
-            if 'system_id' in props: extra += f"  - SysID: {props['system_id']}"
-            if obj.get('timer', 0) > 0: extra += f"  - Timer: {obj['timer']}"
-            if extra: res.append(extra + "\n", style="cyan")
+            if 'length' in props:
+                length = props['length']
+                if obj['type'] == 'walkway':
+                    res.append(f"  End X: {obj['x'] + (length * 4)}\n", style="yellow")
+                elif obj['type'] in ('ladder', 'pole'):
+                    res.append(f"  End Y: {obj['y'] + (length * 8)}\n", style="yellow")
+
+            # Dump ALL properties
+            for k, v in props.items():
+                if k not in ('x', 'y', 'type', 'obj_index'):
+                    res.append(f"  - {k}: {v}\n", style="cyan")
+            
+            if obj.get('timer', 0) > 0:
+                res.append(f"  - TIMER: {obj['timer']}\n", style="bold red")
         
         self.update(res)
 
@@ -343,7 +364,7 @@ class CreepApp(App):
     GameStatus { background: $boost; color: white; height: 1; padding: 0 1; }
     #game-container { layout: horizontal; }
     GameBoard { width: 84; height: 54; border: solid green; margin: 0 2; content-align: left top; }
-    DebugSidebar { width: 40; height: 54; border: solid blue; padding: 1; overflow-y: scroll; }
+    DebugSidebar { width: 60; height: 54; border: solid blue; padding: 1; overflow-y: scroll; }
     VictoryScreen { width: 84; height: 54; border: solid yellow; margin: 0 2; content-align: center middle; display: none; }
     """
     BINDINGS = [
