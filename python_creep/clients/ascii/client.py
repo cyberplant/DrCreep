@@ -202,40 +202,41 @@ class GameBoard(Static):
                 nr_data = state['rooms'].get(nr_id)
                 nr_color_id = nr_data.get('color', 1) if nr_data else 1
                 nr_color = C64_COLOR_NAMES.get(nr_color_id, "white")
-                self.draw_asset(grid, gx, gy - 7, "door", state=obj_state, room_color=room_color_name, next_room_color=nr_color)
+                self.draw_asset(grid, gx, gy, "door", state=obj_state, room_color=room_color_name, next_room_color=nr_color)
 
             elif type in ['ladder', 'pole']:
                 char = '#' if type == 'ladder' else '|'
-                # Draw from top (gy) downwards through the walkway thickness
+                # Draw from top (gy) downwards
                 l_len = props['length'] * 2
-                for i in range(l_len + 2): # Add 2 rows to ensure it punches through walkways
+                # Shorten by 2 to stop at surface
+                for i in range(l_len - 2): 
                     ty = gy + i
                     if 0 <= ty < height and 0 <= gx < width:
                         grid[ty][gx] = (char, 1)
             elif type == 'key':
                 obj_col = C64_COLOR_NAMES.get(int(props['color']) & 0xF, "white")
-                self.draw_asset(grid, gx, gy - 1, "key", obj_color=obj_col)
+                self.draw_asset(grid, gx, gy, "key", obj_color=obj_col)
             elif type == 'lock':
                 obj_col = C64_COLOR_NAMES.get(int(props['color']) & 0xF, "white")
-                self.draw_asset(grid, gx, gy - 3, "lock", obj_color=obj_col)
+                self.draw_asset(grid, gx, gy, "lock", obj_col=obj_col)
             elif type == 'teleport':
                 obj_col = C64_COLOR_NAMES.get(obj_state, "white")
-                self.draw_asset(grid, gx, gy - 7, "teleport_cabin", obj_color=obj_col)
+                self.draw_asset(grid, gx, gy, "teleport_cabin", obj_color=obj_col)
             elif type == 'teleport_target':
                 obj_col = C64_COLOR_NAMES.get(int(props['color']) & 0xF, "white")
-                self.draw_asset(grid, gx, gy - 1, "teleport_target", obj_color=obj_col)
+                self.draw_asset(grid, gx, gy, "teleport_target", obj_color=obj_col)
             elif type == 'doorbell':
-                self.draw_asset(grid, gx, gy - 3, "doorbell", room_color=room_color_name)
+                self.draw_asset(grid, gx, gy, "doorbell", room_color=room_color_name)
             elif type == 'forcefield_switch':
-                self.draw_asset(grid, gx, gy - 3, "forcefield_switch")
+                self.draw_asset(grid, gx, gy, "forcefield_switch")
             elif type == 'forcefield':
-                self.draw_asset(grid, gx, gy - 7, "forcefield", state=obj_state)
+                self.draw_asset(grid, gx, gy, "forcefield", state=obj_state)
             elif type == 'mummy_release':
-                self.draw_asset(grid, gx, gy - 1, "mummy_release", room_color=room_color_name)
+                self.draw_asset(grid, gx, gy, "mummy_release", room_color=room_color_name)
             elif type == 'mummy_tomb':
-                self.draw_asset(grid, gx, gy - 5, "mummy_tomb")
+                self.draw_asset(grid, gx, gy, "mummy_tomb")
             elif type == 'lightning_machine':
-                self.draw_asset(grid, gx, gy - 1, "lightning_machine")
+                self.draw_asset(grid, gx, gy, "lightning_machine")
                 if lightning_systems.get(str(props.get('system_id', 0))):
                     import random
                     chars = ["\\", "|", "Y", "/"]
@@ -252,18 +253,18 @@ class GameBoard(Static):
                         if 0 <= gy < height and 0 <= gx + dx < width: grid[gy][gx+dx] = (' ', 0)
                         if 0 <= gy + 1 < height and 0 <= gx + dx < width: grid[gy+1][gx+dx] = (' ', 0)
             elif type == 'trapdoor_switch':
-                self.draw_asset(grid, gx, gy - 1, "trapdoor_switch")
+                self.draw_asset(grid, gx, gy, "trapdoor_switch")
             elif type == 'conveyor':
                 anim_type = "right" if obj_state == 2 else ("left" if obj_state == 0 else "off")
                 self.draw_asset(grid, gx, gy, "conveyor", anim_name=anim_type, tick=tick)
             elif type == 'conveyor_switch':
-                self.draw_asset(grid, gx, gy - 3, "conveyor_switch", obj_color=C64_COLOR_NAMES.get(5 if obj_state == 2 else (2 if obj_state == 0 else 1)))
+                self.draw_asset(grid, gx, gy, "conveyor_switch", obj_color=C64_COLOR_NAMES.get(5 if obj_state == 2 else (2 if obj_state == 0 else 1)))
             elif type == 'raygun':
-                self.draw_asset(grid, gx, gy - 1, "raygun")
+                self.draw_asset(grid, gx, gy, "raygun")
             elif type == 'raygun_switch':
-                self.draw_asset(grid, gx, gy - 3, "raygun_switch")
+                self.draw_asset(grid, gx, gy, "raygun_switch")
             elif type == 'lightning_switch':
-                self.draw_asset(grid, gx, gy - 3, "lightning_switch")
+                self.draw_asset(grid, gx, gy, "lightning_switch")
 
         # 3. Mummies and Frankensteins
         for m in state.get('mummies', []):
@@ -272,7 +273,7 @@ class GameBoard(Static):
                 m_anim = "idle"
                 if m.get('is_moving'):
                     m_anim = "walk_left" if m.get('facing_left') else "walk_right"
-                self.draw_asset(grid, mx - 1, my - 6, "mummy", anim_name=m_anim, tick=tick)
+                self.draw_asset(grid, mx - 1, my - 5, "mummy", anim_name=m_anim, tick=tick)
 
         for f in state.get('frankies', []):
             if str(f['room_id']) == room_id:
@@ -280,7 +281,7 @@ class GameBoard(Static):
                 f_anim = "idle"
                 if f.get('is_moving'):
                     f_anim = "walk_left" if f.get('facing_left') else "walk_right"
-                self.draw_asset(grid, fx - 1, fy - 6, "frankie", anim_name=f_anim, tick=tick)
+                self.draw_asset(grid, fx - 1, fy - 5, "frankie", anim_name=f_anim, tick=tick)
 
         for p in state.get('projectiles', []):
             if str(p['room_id']) == room_id:
@@ -305,7 +306,7 @@ class GameBoard(Static):
             p_anim = "idle"
             if player.get('is_acting', 0) > 0: p_anim = "action"
             elif player.get('is_moving', False): p_anim = "walk_left" if player.get('facing_left') else "walk_right"
-            self.draw_asset(grid, pgx - 1, pgy - 6, "player", anim_name=p_anim, tick=tick)
+            self.draw_asset(grid, pgx - 1, pgy - 5, "player", anim_name=p_anim, tick=tick)
 
         res = Text()
         border = "+" + "-" * width + "+\n"

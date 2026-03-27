@@ -24,11 +24,11 @@ class ConveyorComponent(BaseComponent):
         super().__init__(data)
         self.state = data.get('state', 1)
 
-    def process_proposal(self, engine, room, player, proposal):
+    def process_proposal(self, engine, room, entity, proposal):
         """Applies horizontal push to entities standing on the belt."""
         if self.state != 1: # ON
             # Check if entity is on the belt (using 8-unit thickness range)
-            if self.y <= (proposal['y'] - 32) <= self.y + 8 and self.x - 4 <= proposal['x'] <= self.x + 36:
+            if self.y <= proposal['y'] <= self.y + 8 and self.x - 4 <= proposal['x'] <= self.x + 36:
                 push = -1.5 if self.state == 0 else 1.5
                 proposal['x'] += push
 
@@ -51,13 +51,21 @@ class ConveyorSwitchComponent(BaseComponent):
             self.state = room.objects[target_id].state
 
     def process_proposal(self, engine, room, current_state, proposal):
-        dist_x, dist_y = abs(proposal['x'] - self.x), abs((proposal['y'] - 16) - self.y)
-        if dist_x < 16 and dist_y < 48:
-            if proposal.get('commands', {}).get('action') and proposal.get('is_acting') == 10:
-                target_id = self.properties.get('target_idx')
-                if 0 <= target_id < len(room.objects):
-                    c_obj = room.objects[target_id]
-                    # Cycle: LEFT (0) -> OFF (1) -> RIGHT (2) -> OFF (1) -> ...
-                    if c_obj.state == 0: c_obj.state = 1
-                    elif c_obj.state == 1: c_obj.state = 2
-                    elif c_obj.state == 2: c_obj.state = 1
+        dist_x, dist_y = abs(proposal['x'] - self.x), abs(proposal['y'] - self.y)
+        if dist_x < 16 and dist_y < 16:
+            if proposal.get('commands', {}).get('action') and proposal.get('is_acting', 0) == 10:
+                if not hasattr(self, '_last_trigger_tick') or (engine.state.current_tick - self._last_trigger_tick) > 20:
+                    target_id = self.properties.get('target_idx')
+                    if 0 <= target_id < len(room.objects):
+                        c_obj = room.objects[target_id]
+                        # Cycle: LEFT (0) -> OFF (1) -> RIGHT (2) -> OFF (1) -> ...
+                        if c_obj.state == 0: 
+                            c_obj.state = 1
+                            self._last_dir = 0
+                        elif c_obj.state == 1:
+                            if getattr(self, '_last_dir', 0) == 0: c_obj.state = 2; self._last_dir = 2
+                            else: c_obj.state = 0; self._last_dir = 0
+                        elif c_obj.state == 2: 
+                            c_obj.state = 1
+                            self._last_dir = 2
+                        self._last_trigger_tick = engine.state.current_tick

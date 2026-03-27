@@ -17,15 +17,20 @@ class LadderComponent(BaseComponent):
         dy = proposal['y'] - player.y
         # Detect horizontal movement intent
         has_horizontal_intent = abs(proposal['x'] - player.x) > 0.1
+        # Detect vertical intent
+        intent_up = proposal['commands'].get('up')
+        intent_down = proposal['commands'].get('down')
 
         if abs(proposal['x'] - self.x) < 4:
-            if self.y <= proposal['y'] <= self.end_y:
+            # Entry/Support Range: From top (self.y) to bottom (self.end_y)
+            # Allow 'down' entry from the walkway surface (self.y)
+            if self.y - 2 <= proposal['y'] <= self.end_y + 2:
                 if proposal['move_mode'] == 'ladder':
                     # Only snap to X if no horizontal intent (allows walking off)
                     if not has_horizontal_intent:
                         proposal['x'] = self.x
                     proposal['has_support'] = True
-                elif abs(dy) > 0.1:
+                elif intent_up or intent_down:
                     # Switch to ladder mode if intending to move vertically
                     proposal['move_mode'] = 'ladder'
                     proposal['x'] = self.x
@@ -45,18 +50,20 @@ class PoleComponent(BaseComponent):
         dy = proposal['y'] - player.y
         # Detect horizontal movement intent
         has_horizontal_intent = abs(proposal['x'] - player.x) > 0.1
+        # Detect vertical intent
+        intent_down = proposal['commands'].get('down')
 
         if abs(proposal['x'] - self.x) < 4:
-            if self.y <= proposal['y'] <= self.end_y:
+            if self.y - 2 <= proposal['y'] <= self.end_y + 2:
                 if proposal['move_mode'] == 'ladder':
                     # Only snap to X if no horizontal intent
                     if not has_horizontal_intent:
                         proposal['x'] = self.x
                     proposal['has_support'] = True
-                    # Block UP movement on poles: if moving up, revert to player.y
+                    # Block UP movement on poles
                     if dy < -0.1: 
                         proposal['y'] = player.y
-                elif dy > 0.1:
+                elif intent_down:
                     # Switch to ladder mode only if moving DOWN
                     proposal['move_mode'] = 'ladder'
                     proposal['x'] = self.x

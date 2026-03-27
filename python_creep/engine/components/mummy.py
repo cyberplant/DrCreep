@@ -4,55 +4,34 @@ class MummyEntity:
     """
     Mummy AI Entity.
     Logic:
-    - Only moves if player is in the same room and at similar Y level.
     - Moves slower than the player (every 3 ticks).
-    - Resets player on contact via process_proposal.
+    - Tracks player X position.
     """
     def __init__(self, data):
         self.x = data['x']
         self.y = data['y']
         self.room_id = data['room_id']
-        self.is_moving = data.get('is_moving', False)
+        self.is_moving = False
         self.facing_left = data.get('facing_left', False)
+        self.move_mode = 'walkway'
+        self.is_acting = 0
         self.type = 'mummy_entity'
 
     def update(self, engine, tick):
-        """Horizontal tracking of the player with walkway support."""
-        room = engine.state.rooms.get(self.room_id)
+        """AI intent logic: returns commands every 3 ticks."""
         target_p = next((p for p in engine.state.players if p.room_id == self.room_id), None)
-        self.is_moving = False
+        cmds = {}
         
-        has_support = False
-        for obj in room.objects:
-            if obj.type == 'walkway':
-                if obj.x - 4 <= self.x <= obj.x + (obj.length * 4) + 4:
-                    if obj.y <= self.y <= obj.y + 8:
-                        self.y = obj.y
-                        has_support = True
-                        break
+        if target_p and tick % 3 == 0:
+            dx = target_p.x - self.x
+            # Track player X
+            if dx > 4: cmds['right'] = True
+            elif dx < -4: cmds['left'] = True
         
-        if has_support and target_p and abs(target_p.y - self.y) < 16:
-            if tick % 3 == 0:
-                self.is_moving = True
-                vx = 1 if self.x < target_p.x else -1
-                
-                # Check walkway ahead
-                next_x = self.x + vx * 8
-                can_move = False
-                for obj in room.objects:
-                    if obj.type == 'walkway' and obj.y == self.y:
-                        if obj.x <= next_x <= obj.x + (obj.length * 4):
-                            can_move = True
-                            break
-                
-                if can_move:
-                    self.x += vx
-                    self.facing_left = (vx < 0)
-                else:
-                    self.is_moving = False
+        return cmds
 
-    def process_proposal(self, engine, room, current_state, proposal):
-        """Check for contact with player and kill if touching."""
+    def process_proposal(self, engine, room, entity, proposal):
+        """Kill player on contact via the pipeline."""
         if proposal['room_id'] == self.room_id:
             if abs(proposal['x'] - self.x) < 12 and abs(proposal['y'] - self.y) < 12:
                 proposal['is_dead'] = True
@@ -61,19 +40,21 @@ class MummyEntity:
         """Standard serialization for entity broadcast."""
         return {
             'x': self.x, 'y': self.y, 'room_id': self.room_id, 
-            'is_moving': self.is_moving, 'facing_left': self.facing_left
+            'is_moving': self.is_moving, 'facing_left': self.facing_left,
+            'is_acting': self.is_acting
         }
 
 class MummyReleaseComponent(BaseComponent):
-    """Component that spawns a Mummy when the player walks nearby."""
+    """Component that spawns a Mummy when an entity walks nearby."""
     def __init__(self, data):
         super().__init__(data)
         self.state = 0 # 0=sleeping, 1=released
 
-    def process_proposal(self, engine, room, current_state, proposal):
-        """Detect player proximity and trigger spawn."""
+    def process_proposal(self, engine, room, entity, proposal):
+        """Detect entity proximity and trigger spawn."""
         if self.state == 0:
-            if abs(proposal['x'] - self.x) < 16 and abs((proposal['y'] - 16) - self.y) < 32:
+            # Trigger if an entity is close to the release trigger
+            if abs(proposal['x'] - self.x) < 16 and abs(proposal['y'] - 32 - self.y) < 32:
                 self.state = 1
                 engine.state.mummies.append(MummyEntity({
                     'x': self.properties['tomb_x'] + 12, 
@@ -82,12 +63,13 @@ class MummyReleaseComponent(BaseComponent):
                 }))
 
     def get_asset(self, tick):
+        # M for Mummy release trigger
         return ["[white]M[/]"]
 
 class MummyTombComponent(BaseComponent):
     """Visual placeholder for a mummy's tomb."""
-    def process_proposal(self, engine, room, current_state, proposal):
+    def process_proposal(self, engine, room, entity, proposal):
         pass
 
     def get_asset(self, tick):
-        return ["[red]#####[/]", "[red]#####[/]", "[red]#####[/]"]
+        return ["[red]#####[/]", "[red]#####[/]", "[red]#####[/]", "[red]#####[/]", "[red]#####[/]", "[red]#####[/]"]

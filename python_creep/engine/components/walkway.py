@@ -15,12 +15,17 @@ class WalkwayComponent(BaseComponent):
         """If player is within X bounds and close to Y, treat as support."""
         # Detect horizontal movement intent
         has_horizontal_intent = abs(proposal['x'] - current_state.x) > 0.1
+        # Detect vertical intent
+        has_vertical_intent = proposal['commands'].get('up') or proposal['commands'].get('down')
 
         if self.x <= proposal['x'] <= self.end_x:
             # Check if player is within the walkway's vertical range (8 units)
             if self.y <= proposal['y'] <= self.y + 8:
                 # Provide support if already in walkway mode OR if transitioning from ladder
+                # Crucial: Don't snap Y if the player is trying to move vertically (entering ladder)
                 if proposal['move_mode'] == 'walkway' or (has_horizontal_intent and abs(proposal['y'] - self.y) < 4):
-                    proposal['y'] = self.y # Snap to top surface
-                    proposal['move_mode'] = 'walkway'
-                    proposal['has_support'] = True
+                    if not has_vertical_intent or proposal['move_mode'] == 'walkway':
+                        if not has_vertical_intent:
+                            proposal['y'] = self.y # Snap to top surface
+                        proposal['move_mode'] = 'walkway'
+                        proposal['has_support'] = True

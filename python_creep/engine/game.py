@@ -3,14 +3,22 @@ import json
 import random
 import sys
 import traceback
+import os
 
 from .parser import CastleParser
 from .state import GameState
 from .network import NetworkServer
+from rich.console import Console
+
+console = Console()
 
 def log_engine(msg):
     with open("engine.log", "a") as f:
         f.write(f"[{time.strftime('%H:%M:%S')}] {msg}\n")
+
+def log(msg, style="white"):
+    log_engine(msg)
+    console.print(f"[bold blue]ENGINE[/] [ {time.strftime('%H:%M:%S')} ] {msg}", style=style)
 
 class GameEngine:
     def __init__(self, castle_file, debug_mode=False):
@@ -64,7 +72,7 @@ class GameEngine:
         except Exception:
             err = traceback.format_exc()
             log_engine(f"CRITICAL ENGINE ERROR:\n{err}")
-            print(err, file=sys.stderr)
+            console.print(err, style="bold red")
 
     def _main_loop(self):
         tick_duration = 1.0 / self.ticks_per_second
@@ -84,17 +92,26 @@ class GameEngine:
             for obj in room.objects:
                 obj.update(self, room, self.state.current_tick)
 
-        # 2. Update dynamic autonomous entities (Mummies, Frankies, Proj)
-        for m in self.state.mummies: m.update(self, self.state.current_tick)
-        for f in self.state.frankies: f.update(self, self.state.current_tick)
+        # 2. Projectiles update
         self.state.projectiles = [p for p in self.state.projectiles if p.active]
         for proj in self.state.projectiles: proj.update(self, self.state.current_tick)
 
-        # 3. Process Players via Pipeline
-        for player in self.state.players:
-            cmds = self.pending_commands.get(player.id, {})
-            
-            # Initial intent (discrete movement, no acceleration)
+        # 3. Unified Entity Pipeline (Players, Mummies, Frankies)
+        all_entities = []
+        for p in self.state.players: all_entities.append(('player', p))
+        for m in self.state.mummies: all_entities.append(('mummy', m))
+        for f in self.state.frankies: all_entities.append(('frankie', f))
+
+        for etype, ent in all_entities:
+            cmds = {}
+            if etype == 'player':
+                cmds = self.pending_commands.get(ent.id, {})
+                if self.debug_mode and cmds:
+                    log(f"Player {ent.id} Input: {cmds}", style="yellow")
+            else:
+                cmds = ent.update(self, self.state.current_tick)
+
+            # Resolve discrete intent
             dx, dy = 0, 0
             if cmds.get('left'): dx = -4.0
             elif cmds.get('right'): dx = 4.0
@@ -102,64 +119,68 @@ class GameEngine:
             elif cmds.get('down'): dy = 4.0
 
             proposal = {
-                'x': player.x + dx,
-                'y': player.y + dy,
-                'room_id': player.room_id,
-                'move_mode': player.move_mode,
-                'keys': player.keys[:],
+                'x': ent.x + dx,
+                'y': ent.y + dy,
+                'room_id': ent.room_id,
+                'move_mode': ent.move_mode,
+                'keys': getattr(ent, 'keys', [])[:],
                 'is_dead': False,
                 'is_moving': (dx != 0 or dy != 0),
-                'is_acting': 10 if cmds.get('action') else max(0, player.is_acting - 1),
-                'facing_left': (dx < 0) if dx != 0 else player.facing_left,
+                'is_acting': 10 if cmds.get('action') else max(0, getattr(ent, 'is_acting', 0) - 1),
+                'facing_left': (dx < 0) if dx != 0 else ent.facing_left,
                 'commands': cmds,
-                'has_support': False # Must be validated by components
+                'has_support': False
             }
 
-            room = self.state.rooms.get(player.room_id)
-            if room:
-                # Pipeline through all room objects
-                for obj in room.objects:
-                    obj.process_proposal(self, room, player, proposal)
-                
-                # Pipeline through other entities
-                for m in self.state.mummies:
-                    if hasattr(m, 'process_proposal'): m.process_proposal(self, room, player, proposal)
-                for f in self.state.frankies:
-                    if hasattr(f, 'process_proposal'): f.process_proposal(self, room, player, proposal)
-                for proj in self.state.projectiles:
-                    if hasattr(proj, 'process_proposal'): proj.process_proposal(self, room, player, proposal)
+            if self.debug_mode and etype == 'player' and (dx != 0 or dy != 0 or cmds.get('action')):
+                log(f"  Proposal BEFORE: x={proposal['x']}, y={proposal['y']}, mode={proposal['move_mode']}")
 
-            # Resolve Death (Immediate Respawn)
+            room = self.state.rooms.get(ent.room_id)
+            if room:
+                for obj in room.objects:
+                    obj.process_proposal(self, room, ent, proposal)
+                
+                # Cross-entity collision (only if player)
+                if etype == 'player':
+                    for m in self.state.mummies: m.process_proposal(self, room, ent, proposal)
+                    for f in self.state.frankies: f.process_proposal(self, room, ent, proposal)
+                    for proj in self.state.projectiles: proj.process_proposal(self, room, ent, proposal)
+
+            # Resolve Physics: STRICT NO GRAVITY
             if proposal['is_dead']:
-                player.room_id = 0
-                player.x, player.y = 20, 192
-                player.move_mode = 'walkway'
-                player.is_moving = False
+                if etype == 'player':
+                    if self.debug_mode: log(f"  Player {ent.id} DIED", style="bold red")
+                    ent.room_id = 0
+                    ent.x, ent.y = 20, 192
+                    ent.move_mode = 'walkway'
+                    ent.is_moving = False
                 continue
 
-            # No Gravity: Halt if no support (blocked from walking off edges)
+            # If no support, entity is blocked (revert to old position)
             if not proposal['has_support']:
-                proposal['y'] = player.y
-                proposal['x'] = player.x
-                proposal['move_mode'] = player.move_mode
+                if self.debug_mode and etype == 'player' and (dx != 0 or dy != 0):
+                    log(f"  BLOCKED: NO SUPPORT at x={proposal['x']}, y={proposal['y']}", style="red")
+                proposal['y'] = ent.y
+                proposal['x'] = ent.x
+                proposal['move_mode'] = ent.move_mode
+                proposal['is_moving'] = False
 
-            # World Boundaries
+            # Apply Bounds
             proposal['x'] = max(16, min(304, proposal['x']))
             proposal['y'] = max(0, min(200, proposal['y']))
 
-            # Apply final state
-            player.apply_proposal(proposal)
+            if self.debug_mode and etype == 'player' and (dx != 0 or dy != 0 or cmds.get('action')):
+                log(f"  Proposal AFTER:  x={proposal['x']}, y={proposal['y']}, mode={proposal['move_mode']}, support={proposal['has_support']}")
+
+            # Apply final state to entity
+            if hasattr(ent, 'apply_proposal'):
+                ent.apply_proposal(proposal)
+            else:
+                ent.x, ent.y, ent.room_id, ent.move_mode = proposal['x'], proposal['y'], proposal['room_id'], proposal['move_mode']
+                ent.facing_left, ent.is_moving = proposal['facing_left'], proposal['is_moving']
+                ent.is_acting = proposal['is_acting']
         
         self.pending_commands = {}
-
-    def _reset_player(self, player):
-        room = self.state.rooms.get(player.room_id)
-        if room:
-            for obj in room.objects:
-                from .components.door import DoorComponent
-                if isinstance(obj, DoorComponent) and obj.state == 2:
-                    player.x, player.y, player.vx, player.vy, player.move_mode = obj.x + 10, obj.y + 32, 0, 0, 'walkway'
-                    break
 
     def _broadcast(self):
         state_dict = {

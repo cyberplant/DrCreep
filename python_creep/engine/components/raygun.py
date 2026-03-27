@@ -45,15 +45,18 @@ class RaygunComponent(BaseComponent):
         """Vertical tracking or patrol logic."""
         if self.timer > 0: self.timer -= 1
 
+        # Mid-body Y: player.y - 12 (assuming player is 24px tall)
         target_p = next((p for p in engine.state.players if p.room_id == room.id), None)
         if target_p:
-            # Track player Y
-            if abs(target_p.y - 32 - self.y) > 4:
-                if target_p.y - 32 > self.y: self.y += 1
-                else: self.y -= 1
-            # Auto-fire if aligned
-            if abs(target_p.y - 32 - self.y) < 8 and self.timer == 0:
-                self.timer = 100
+            # Track player Y slower: every 2 ticks
+            if tick % 2 == 0:
+                body_y = target_p.y - 12
+                if abs(body_y - self.y) > 2:
+                    if body_y > self.y: self.y += 1
+                    else: self.y -= 1
+            # Auto-fire if aligned exactly (within 2 world units)
+            if abs(target_p.y - 12 - self.y) < 2 and self.timer == 0:
+                self.timer = 150 # Slower reload
                 direction = 1 if target_p.x > self.x else -1
                 engine.state.projectiles.append(ProjectileEntity({
                     'x': self.x + (16*direction), 
@@ -62,8 +65,8 @@ class RaygunComponent(BaseComponent):
                     'room_id': room.id
                 }))
         else:
-            # Patrol if no player
-            if tick % 2 == 0:
+            # Patrol if no player: every 4 ticks
+            if tick % 4 == 0:
                 self.y += self.direction * 1
                 if self.y >= self.initial_y + 32: self.direction = -1
                 elif self.y <= self.initial_y: self.direction = 1
