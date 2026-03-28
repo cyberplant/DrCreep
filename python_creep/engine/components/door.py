@@ -57,15 +57,19 @@ class DoorComponent(BaseComponent):
     def process_proposal(self, engine, room, current_state, proposal):
         """Handle room transitions when walking into an open door."""
         if self.state == 2: # Fully open
-            # Tighten X-bounds: player must be within 4 pixels of door center (x+10)
-            if abs(proposal['x'] - (self.x + 10)) < 4 and abs(proposal['y'] - (self.y + 32)) < 16:
+            # Widen entry zone: 10 world units (full door width)
+            if abs(proposal['x'] - (self.x + 5)) <= 5 and abs(proposal['y'] - (self.y + 32)) < 16:
                 if proposal.get('commands', {}).get('up'): # Intent to enter door
                     if self.properties.get('is_exit'):
                         engine.state.victory = True
                         return
                     
-                    target_room_id = self.properties['link_room']
-                    target_door_idx = self.properties['link_door']
+                    try:
+                        target_room_id = int(self.properties['link_room'])
+                        target_door_idx = int(self.properties['link_door'])
+                    except (KeyError, ValueError):
+                        return
+
                     target_room = engine.state.rooms.get(target_room_id)
                     
                     if target_room:
@@ -73,7 +77,7 @@ class DoorComponent(BaseComponent):
                         if 0 <= target_door_idx < len(target_doors):
                             tobj = target_doors[target_door_idx]
                             proposal['room_id'] = target_room_id
-                            proposal['x'] = tobj.x + 10
+                            proposal['x'] = tobj.x + 5 # Center him in target door
                             proposal['y'] = tobj.y + 32
                             tobj.state = 2 # Ensure target door is also open
 

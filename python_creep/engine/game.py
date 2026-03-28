@@ -203,6 +203,23 @@ class GameEngine:
         if commands.get('restart'):
             self.__init__(self.castle_file, debug_mode=self.debug_mode)
             return
+        
+        # Developer Tweaks
+        if 'tweak' in commands:
+            t = commands['tweak']
+            room_id = t.get('room_id')
+            obj_idx = t.get('obj_idx')
+            attr = t.get('attr')
+            delta = t.get('delta', 0)
+            
+            room = self.state.rooms.get(int(room_id))
+            if room and 0 <= obj_idx < len(room.objects):
+                obj = room.objects[obj_idx]
+                if attr == 'x': obj.x += delta
+                elif attr == 'y': obj.y += delta
+                log(f"TWEAK: Room {room_id} Obj {obj_idx} {attr} += {delta} (New: {getattr(obj, attr)})", style="bold green")
+            return
+
         if self.state.victory: return
         self.pending_commands[player_id] = commands
 

@@ -27,20 +27,38 @@ class FrankieEntity:
             dy = target_p.y - self.y
             
             if abs(dy) > 8:
-                # Different level: try to find vertical path (ladder/pole)
+                # Different level: try to find vertical path
                 room = engine.state.rooms.get(self.room_id)
-                found_v = False
+                
+                # Are we already ON a ladder/pole?
+                if self.move_mode == 'ladder':
+                    if dy > 0: cmds['down'] = True
+                    else: cmds['up'] = True
+                    return cmds
+
+                # Find nearest ladder/pole
+                best_v = None
+                min_dist = 9999
                 for obj in room.objects:
-                    if obj.type in ('ladder', 'pole') and abs(self.x - obj.x) < 8:
+                    if obj.type in ('ladder', 'pole'):
+                        # Poles only for going DOWN
+                        if obj.type == 'pole' and dy < 0: continue
+                        
+                        dist = abs(self.x - obj.x)
+                        if dist < min_dist:
+                            min_dist = dist
+                            best_v = obj
+                
+                if best_v:
+                    # If we are aligned with the vertical structure, use it
+                    if abs(self.x - best_v.x) < 4:
                         if dy > 0: cmds['down'] = True
                         else:
-                            if obj.type == 'ladder': cmds['up'] = True
-                        found_v = True
-                        break
-                if not found_v:
-                    # Move horizontally towards player to reach a vertical structure
-                    if dx > 4: cmds['right'] = True
-                    elif dx < -4: cmds['left'] = True
+                            if best_v.type == 'ladder': cmds['up'] = True
+                    else:
+                        # Move towards it
+                        if best_v.x > self.x: cmds['right'] = True
+                        else: cmds['left'] = True
             else:
                 # Same level: track horizontally
                 if dx > 4: cmds['right'] = True

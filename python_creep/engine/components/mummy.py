@@ -18,13 +18,13 @@ class MummyEntity:
         self.type = 'mummy_entity'
 
     def update(self, engine, tick):
-        """AI intent logic: returns commands every 3 ticks."""
+        """AI intent logic: returns commands every 12 ticks (slowed down)."""
         target_p = next((p for p in engine.state.players if p.room_id == self.room_id), None)
         cmds = {}
         
-        if target_p and tick % 3 == 0:
+        # Follow player on X axis regardless of Y difference
+        if target_p and tick % 12 == 0:
             dx = target_p.x - self.x
-            # Track player X
             if dx > 4: cmds['right'] = True
             elif dx < -4: cmds['left'] = True
         

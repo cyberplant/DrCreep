@@ -9,7 +9,7 @@ class LadderComponent(BaseComponent):
     def __init__(self, data):
         super().__init__(data)
         self.length = data.get('length', 0)
-        self.end_y = self.y + (self.length * 8)
+        self.end_y = self.y + (self.length * 8) - 8
 
     def process_proposal(self, engine, room, player, proposal):
         """Handle mode switching and vertical snapping."""
@@ -43,7 +43,7 @@ class PoleComponent(BaseComponent):
     def __init__(self, data):
         super().__init__(data)
         self.length = data.get('length', 0)
-        self.end_y = self.y + (self.length * 8)
+        self.end_y = self.y + (self.length * 8) - 8
 
     def process_proposal(self, engine, room, player, proposal):
         # Calculate vertical intent
