@@ -113,10 +113,10 @@ class GameEngine:
 
             # Resolve discrete intent
             dx, dy = 0, 0
-            if cmds.get('left'): dx = -4.0
-            elif cmds.get('right'): dx = 4.0
-            if cmds.get('up'): dy = -4.0
-            elif cmds.get('down'): dy = 4.0
+            if cmds.get('left'): dx = -1.5
+            elif cmds.get('right'): dx = 1.5
+            if cmds.get('up'): dy = -1.5
+            elif cmds.get('down'): dy = 1.5
 
             proposal = {
                 'x': ent.x + dx,
@@ -159,18 +159,18 @@ class GameEngine:
             # If no support, entity is blocked (revert to old position)
             if not proposal['has_support']:
                 if self.debug_mode and etype == 'player' and (dx != 0 or dy != 0):
-                    log(f"  BLOCKED: NO SUPPORT at x={proposal['x']}, y={proposal['y']}", style="red")
+                    log(f"  BLOCKED: NO SUPPORT at x={proposal['x']:.1f}, y={proposal['y']:.1f}", style="red")
                 proposal['y'] = ent.y
                 proposal['x'] = ent.x
                 proposal['move_mode'] = ent.move_mode
                 proposal['is_moving'] = False
 
-            # Apply Bounds
-            proposal['x'] = max(16, min(304, proposal['x']))
+            # World Boundaries: Full screen width (320)
+            proposal['x'] = max(0, min(320, proposal['x']))
             proposal['y'] = max(0, min(200, proposal['y']))
 
             if self.debug_mode and etype == 'player' and (dx != 0 or dy != 0 or cmds.get('action')):
-                log(f"  Proposal AFTER:  x={proposal['x']}, y={proposal['y']}, mode={proposal['move_mode']}, support={proposal['has_support']}")
+                log(f"  Proposal AFTER:  x={proposal['x']:.1f}, y={proposal['y']:.1f}, mode={proposal['move_mode']}, support={proposal['has_support']}")
 
             # Apply final state to entity
             if hasattr(ent, 'apply_proposal'):
