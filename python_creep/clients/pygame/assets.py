@@ -9,12 +9,15 @@ C64_PALETTE = [
 ]
 
 class C64Assets:
-    def __init__(self, sprite_dir, tileset_path):
+    def __init__(self, sprite_dir, tileset_path, custom_tileset_path=None):
         self.sprites = {}
         self.tiles = []
+        self.custom_tiles = []
         print(f"DEBUG: Initializing assets. Sprite Dir: {sprite_dir}, Tileset: {tileset_path}")
         self._load_sprites(sprite_dir)
-        self._load_tiles(tileset_path)
+        self._load_tiles(tileset_path, self.tiles)
+        if custom_tileset_path:
+            self._load_tiles(custom_tileset_path, self.custom_tiles)
 
     def _load_sprites(self, sprite_dir):
         if not os.path.exists(sprite_dir):
@@ -35,32 +38,40 @@ class C64Assets:
                     print(f"DEBUG: Failed to load sprite {filename}: {e}")
         print(f"DEBUG: Loaded {count} sprites from {sprite_dir}")
 
-    def _load_tiles(self, tileset_path):
-        if not os.path.exists(tileset_path):
-            print(f"ERROR: Tileset file not found: {os.path.abspath(tileset_path)}")
+    def _load_tiles(self, path, target_list):
+        if not os.path.exists(path):
+            print(f"ERROR: Tileset file not found: {os.path.abspath(path)}")
             return
         try:
-            full_tileset = pygame.image.load(tileset_path).convert()
+            full_tileset = pygame.image.load(path).convert_alpha()
             width, height = full_tileset.get_size()
             for ty in range(0, height, 8):
                 for tx in range(0, width, 8):
-                    tile = pygame.Surface((8, 8))
+                    tile = pygame.Surface((8, 8), pygame.SRCALPHA)
                     tile.blit(full_tileset, (0, 0), (tx, ty, 8, 8))
-                    self.tiles.append(tile)
-            print(f"DEBUG: Loaded {len(self.tiles)} tiles.")
+                    target_list.append(tile)
+            print(f"DEBUG: Loaded {len(target_list)} tiles from {path}.")
         except Exception as e:
-            print(f"ERROR: Failed to load tileset: {e}")
+            print(f"ERROR: Failed to load tileset {path}: {e}")
 
-    def get_tile(self, index, color_idx):
-        if index >= len(self.tiles):
+    def get_tile(self, index, color_idx, custom=False):
+        t_list = self.custom_tiles if custom else self.tiles
+        if not t_list or index >= len(t_list):
             return None
-        tile = self.tiles[index].copy()
+        tile = t_list[index].copy()
         color = C64_PALETTE[color_idx % 16]
-        # Color the white pixels
-        pixels = pygame.PixelArray(tile)
-        pixels.replace((255, 255, 255), color)
-        del pixels
+        # Multiply the white pixels with the target color, preserving transparent background
+        tile.fill(color + (255,), special_flags=pygame.BLEND_RGBA_MULT)
         return tile
 
     def get_sprite(self, sprite_id):
         return self.sprites.get(sprite_id)
+        
+    def get_colored_sprite(self, sprite_id, color_idx):
+        sprite = self.sprites.get(sprite_id)
+        if not sprite: return None
+        colored = sprite.copy()
+        color = C64_PALETTE[color_idx % 16]
+        colored.fill(color + (255,), special_flags=pygame.BLEND_RGBA_MULT)
+        return colored
+

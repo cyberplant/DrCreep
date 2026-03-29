@@ -49,7 +49,7 @@ class TeleportComponent(BaseComponent):
                         if tobj.type == 'teleport_target' and tobj.properties['color'] == tc:
                             proposal['room_id'] = rid
                             proposal['x'] = tobj.x
-                            proposal['y'] = tobj.y + 24
+                            proposal['y'] = tobj.y + 32
                             proposal['has_support'] = True
                             return
 

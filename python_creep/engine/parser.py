@@ -135,13 +135,14 @@ class CastleParser:
             elif func in [E_OBJECT_TEXT, 0x2A6D, 0x0839, 0x160A]:
                 while self.data[offset] != 0:
                     if self._read_word(offset) in VALID_IDS: break
-                    x, y, col, text = self.data[offset], self.data[offset+1], self.data[offset+2], ""
+                    x, y, col, font = self.data[offset], self.data[offset+1], self.data[offset+2], self.data[offset+3]
+                    text = ""
                     offset += 4
                     while True:
                         if offset >= len(self.data): break
                         c = self.data[offset]; text += chr(c & 0x7F); offset += 1
                         if c & 0x80: break
-                    room.objects.append({'type': 'text', 'x': x, 'y': y, 'text': text, 'color': col})
+                    room.objects.append({'type': 'text', 'x': x, 'y': y, 'text': text, 'color': col, 'font': font})
                 offset += 1
             elif func in [E_OBJECT_RAY_GUN, E_OBJECT_TRAP_DOOR, E_OBJECT_CONVEYOR, E_OBJECT_FRANKENSTEIN]:
                 while (self.data[offset] & 0x80) == 0:

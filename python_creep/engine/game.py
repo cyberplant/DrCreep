@@ -158,22 +158,20 @@ class GameEngine:
 
             # If no support, entity is blocked (revert to old position)
             if not proposal['has_support']:
-                if self.debug_mode and etype == 'player' and (dx != 0 or dy != 0):
-                    log(f"  BLOCKED: NO SUPPORT at x={proposal['x']:.1f}, y={proposal['y']:.1f}", style="red")
                 proposal['y'] = ent.y
                 proposal['x'] = ent.x
                 proposal['move_mode'] = ent.move_mode
                 proposal['is_moving'] = False
 
-            # World Boundaries: Full screen width (320)
-            proposal['x'] = max(0, min(320, proposal['x']))
+            # World Boundaries: Match Play Area (16 to 176 world units = 0 to 320 pixels)
+            proposal['x'] = max(16, min(176, proposal['x']))
             proposal['y'] = max(0, min(200, proposal['y']))
-
-            if self.debug_mode and etype == 'player' and (dx != 0 or dy != 0 or cmds.get('action')):
-                log(f"  Proposal AFTER:  x={proposal['x']:.1f}, y={proposal['y']:.1f}, mode={proposal['move_mode']}, support={proposal['has_support']}")
 
             # Apply final state to entity
             if hasattr(ent, 'apply_proposal'):
+                if self.debug_mode and etype == 'player':
+                    if ent.x != proposal['x'] or ent.y != proposal['y']:
+                        log(f"Player {ent.id} moved: ({ent.x:.1f}, {ent.y:.1f}) -> ({proposal['x']:.1f}, {proposal['y']:.1f})", style="green")
                 ent.apply_proposal(proposal)
             else:
                 ent.x, ent.y, ent.room_id, ent.move_mode = proposal['x'], proposal['y'], proposal['room_id'], proposal['move_mode']
