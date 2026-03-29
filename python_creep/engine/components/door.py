@@ -76,10 +76,16 @@ class DoorComponent(BaseComponent):
                         target_doors = [t for t in target_room.objects if t.type == 'door']
                         if 0 <= target_door_idx < len(target_doors):
                             tobj = target_doors[target_door_idx]
-                            proposal['room_id'] = target_room_id
-                            proposal['x'] = tobj.x + 5 # Center him in target door
-                            proposal['y'] = tobj.y + 32
-                            tobj.state = 2 # Ensure target door is also open
+                            engine.state.transition = {
+                                'to_room': target_room_id,
+                                'target_x': tobj.x + 5,
+                                'target_y': tobj.y + 32,
+                                'target_state': 2,
+                                'target_door': tobj
+                            }
+                            proposal['x'] = current_state.x
+                            proposal['y'] = current_state.y
+                            proposal['has_support'] = True
 
     def get_asset(self, tick):
         if self.state == 0: return self.ASSET[0]
@@ -97,5 +103,7 @@ class DoorbellComponent(BaseComponent):
                 if 0 <= target_id < len(room_doors):
                     if room_doors[target_id].state == 0:
                         room_doors[target_id].state = 1
+                        if not hasattr(engine.state, 'events'): engine.state.events = []
+                        engine.state.events.append('door_open')
     def get_asset(self, tick):
         return ["[white]●[/]"]

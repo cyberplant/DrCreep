@@ -14,9 +14,21 @@ sys.path.append(os.getcwd())
 
 class PygameClient:
     def __init__(self, host='127.0.0.1', port=4242, debug=False):
+        pygame.mixer.pre_init(44100, -16, 2, 512)
         pygame.init()
         self.screen = pygame.display.set_mode((640, 400))
         pygame.display.set_caption("The Castles of Dr. Creep (Pygame)")
+        
+        self.audio_enabled = True
+        try:
+            pygame.mixer.init()
+            print("DEBUG: Pygame Audio Mixer initialized.")
+        except Exception as e:
+            print(f"WARNING: Audio mixer failed to init: {e}")
+            self.audio_enabled = False
+            
+        self.sounds = {}
+        
         self.clock = pygame.time.Clock()
         
         self.host, self.port = host, port
@@ -69,12 +81,14 @@ class PygameClient:
         self.running = False
 
     def _send_input(self, commands):
+        self._send_command({'type': 'INPUT', 'player_id': 0, 'commands': commands})
+
+    def _send_command(self, msg):
         if self.sock:
-            msg = {'type': 'INPUT', 'player_id': 0, 'commands': commands}
             try:
                 self.sock.sendall((json.dumps(msg) + "\n").encode())
             except Exception as e:
-                print(f"ERROR: Failed to send input: {e}")
+                print(f"ERROR: Failed to send command: {e}")
                 self.running = False
 
     def handle_events(self):
@@ -84,6 +98,10 @@ class PygameClient:
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_F12:
                     self._take_screenshot()
+                elif event.key == pygame.K_q:
+                    self.running = False
+                elif event.key == pygame.K_k:
+                    self._send_input({'respawn': True})
         
         keys = pygame.key.get_pressed()
         cmds = {
@@ -98,10 +116,9 @@ class PygameClient:
 
     def _take_screenshot(self):
         filename = f"screenshot_{int(time.time())}.png"
-        # Save the composed world surface, scaled up
-        scaled = pygame.transform.scale(self.world_surface, (320 * self.scale, 200 * self.scale))
-        pygame.image.save(scaled, filename)
-        print(f"DEBUG: Screenshot saved to {filename}")
+        # Save the native resolution world surface
+        pygame.image.save(self.world_surface, filename)
+        print(f"DEBUG: Screenshot saved to {filename} at native 320x200 resolution")
 
     def px(self, x): return (int(x) - 16) * 2
     def py(self, y): return int(y)
@@ -124,6 +141,40 @@ class PygameClient:
         if tile:
             self.world_surface.blit(tile, (x_px, y_px))
 
+    def _render_map_view(self):
+        self.world_surface.fill((0, 0, 0))
+        font = pygame.font.SysFont(None, 24)
+        title = font.render("CASTLE MAP", True, (255, 255, 255))
+        self.world_surface.blit(title, (100, 10))
+
+        transition = self.state.get('transition', {})
+        target_room = transition.get('to_room')
+        
+        for r_id_str, r_data in self.state.get('rooms', {}).items():
+            r_id = int(r_id_str)
+            # Arrange in an arbitrary grid for visualization
+            rx = 50 + (r_id % 5) * 40
+            ry = 50 + (r_id // 5) * 30
+            color = C64_PALETTE[r_data.get('color', 1)]
+            
+            pygame.draw.rect(self.world_surface, color, (rx, ry, 30, 20), 1)
+            
+            font_small = pygame.font.SysFont(None, 16)
+            txt = font_small.render(str(r_id), True, color)
+            self.world_surface.blit(txt, (rx + 5, ry + 3))
+
+            if r_id == target_room:
+                tick = self.state.get('tick', 0)
+                if (tick // 10) % 2 == 0:  # Blinking indicator
+                    pygame.draw.polygon(self.world_surface, (255, 255, 255), [(rx + 15, ry - 5), (rx + 10, ry - 10), (rx + 20, ry - 10)])
+        
+        msg = font_small.render("Press ACTION to enter", True, (200, 200, 200))
+        self.world_surface.blit(msg, (100, 180))
+
+        scaled = pygame.transform.scale(self.world_surface, (320 * self.scale, 200 * self.scale))
+        self.screen.blit(scaled, (0, 0))
+        pygame.display.flip()
+
     def render(self):
         self.world_surface.fill(C64_PALETTE[0])
         
@@ -131,8 +182,21 @@ class PygameClient:
             font = pygame.font.SysFont(None, 24)
             img = font.render("Waiting for server state...", True, (255, 255, 255))
             self.world_surface.blit(img, (80, 90))
-        else:
-            try:
+            scaled = pygame.transform.scale(self.world_surface, (320 * self.scale, 200 * self.scale))
+            self.screen.blit(scaled, (0, 0))
+            pygame.display.flip()
+            return
+            
+        if self.state.get('transition'):
+            self._render_map_view()
+            return
+
+        try:
+                if self.audio_enabled:
+                    for ev in self.state.get('events', []):
+                        if ev in self.sounds:
+                            self.sounds[ev].play()
+
                 player = self.state['players'][0]
                 room_id = str(player['room_id'])
                 room = self.state['rooms'].get(room_id)
@@ -218,8 +282,8 @@ class PygameClient:
                     if self.debug_mode:
                         self._draw_grid()
 
-            except Exception as e:
-                print(f"ERROR: Render exception: {e}")
+        except Exception as e:
+            print(f"ERROR: Render exception: {e}")
 
         # Scale and blit
         scaled = pygame.transform.scale(self.world_surface, (320 * self.scale, 200 * self.scale))
@@ -227,12 +291,19 @@ class PygameClient:
         pygame.display.flip()
 
     def _draw_grid(self):
+        font = pygame.font.SysFont(None, 12)
         # Draw every 16 world units (32 pixels)
         for wx in range(16, 177, 10):
             px = self.px(wx)
             pygame.draw.line(self.world_surface, (40, 40, 40), (px, 0), (px, 200))
+            if px > 0:
+                txt = font.render(str(wx), True, (100, 100, 100))
+                self.world_surface.blit(txt, (px + 2, 2))
         for wy in range(0, 201, 10):
             pygame.draw.line(self.world_surface, (40, 40, 40), (0, wy), (320, wy))
+            if wy > 0:
+                txt = font.render(str(wy), True, (100, 100, 100))
+                self.world_surface.blit(txt, (2, wy + 2))
 
     def _log_room_objects(self, room_id, room):
         print(f"\n--- ROOM {room_id} OBJECTS ---")

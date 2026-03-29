@@ -72,6 +72,7 @@ def extract_sprites(object_file, output_dir):
                             px = (x_block * 8 + p)
                             if px < width_px: pixels[px, y] = C64_PALETTE[1] + (255,)
 
+        img = img.transpose(Image.FLIP_LEFT_RIGHT)
         img.save(os.path.join(output_dir, f"sprite_{i:03d}.png"))
     
     print(f"Extracted sprites to {output_dir}")

@@ -86,7 +86,22 @@ class GameEngine:
 
     def _update(self):
         self.state.current_tick += 1
+        self.state.events = []
         
+        if getattr(self.state, 'transition', None):
+            cmds = self.pending_commands.get(0, {})
+            if cmds.get('action'):
+                tr = self.state.transition
+                p = self.state.players[0]
+                p.room_id = tr['to_room']
+                p.x, p.y = tr['target_x'], tr['target_y']
+                if 'target_door' in tr:
+                    tr['target_door'].state = tr['target_state']
+                p.is_acting = 0
+                self.state.transition = None
+            self.pending_commands = {}
+            return
+
         # 1. Update all static objects first (animations, timers)
         for room in self.state.rooms.values():
             for obj in room.objects:
@@ -181,8 +196,15 @@ class GameEngine:
         self.pending_commands = {}
 
     def _broadcast(self):
+        # Sanitize transition for broadcast (remove non-serializable objects)
+        trans = getattr(self.state, 'transition', None)
+        if trans:
+            trans = {k: v for k, v in trans.items() if k != 'target_door'}
+
         state_dict = {
             'tick': self.state.current_tick,
+            'events': getattr(self.state, 'events', []),
+            'transition': trans,
             'victory': self.state.victory,
             'debug_mode': self.debug_mode,
             'players': [{'id': p.id, 'x': p.x, 'y': p.y, 'room_id': p.room_id, 'keys': p.keys, 'is_moving': getattr(p, 'is_moving', False), 'is_acting': getattr(p, 'is_acting', 0), 'is_teleporting': getattr(p, 'is_teleporting', 0), 'facing_left': getattr(p, 'facing_left', False)} for p in self.state.players],
