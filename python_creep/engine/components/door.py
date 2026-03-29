@@ -81,7 +81,10 @@ class DoorComponent(BaseComponent):
                                 'target_x': tobj.x + 5,
                                 'target_y': tobj.y + 32,
                                 'target_state': 2,
-                                'target_door': tobj
+                                'target_door': tobj,
+                                'door_x': tobj.x,
+                                'door_y': tobj.y,
+                                'door_dir': tobj.properties.get('direction', 0)
                             }
                             proposal['x'] = current_state.x
                             proposal['y'] = current_state.y

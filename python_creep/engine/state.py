@@ -20,9 +20,11 @@ class GameState:
         self.projectiles = []
         self.current_tick = 0
         self.victory = False
+        self.discovered_rooms = set()
         
     def add_player(self, id, start_room_id, start_x, start_y):
         p = Player(id, start_x, start_y)
         p.room_id = start_room_id
         self.players.append(p)
+        self.discovered_rooms.add(start_room_id)
         return p

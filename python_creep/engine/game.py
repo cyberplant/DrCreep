@@ -94,6 +94,7 @@ class GameEngine:
                 tr = self.state.transition
                 p = self.state.players[0]
                 p.room_id = tr['to_room']
+                self.state.discovered_rooms.add(p.room_id)
                 p.x, p.y = tr['target_x'], tr['target_y']
                 if 'target_door' in tr:
                     tr['target_door'].state = tr['target_state']
@@ -128,10 +129,10 @@ class GameEngine:
 
             # Resolve discrete intent
             dx, dy = 0, 0
-            if cmds.get('left'): dx = -1.5
-            elif cmds.get('right'): dx = 1.5
-            if cmds.get('up'): dy = -1.5
-            elif cmds.get('down'): dy = 1.5
+            if cmds.get('left'): dx = -1.2
+            elif cmds.get('right'): dx = 1.2
+            if cmds.get('up'): dy = -1.2
+            elif cmds.get('down'): dy = 1.2
 
             proposal = {
                 'x': ent.x + dx,
@@ -223,6 +224,17 @@ class GameEngine:
         if commands.get('restart'):
             self.__init__(self.castle_file, debug_mode=self.debug_mode)
             return
+
+        if commands.get('respawn'):
+            start_room_idx = self.parser.data[3] if self.parser.data[3] < len(self.state.rooms) else 0
+            self.state.transition = {
+                'to_room': start_room_idx,
+                'target_x': 20,
+                'target_y': 192,
+                'target_state': 0
+            }
+            log(f"RESPAWN: Resetting player to room {start_room_idx}", style="bold cyan")
+            return
         
         # Developer Tweaks
         if 'tweak' in commands:
@@ -250,3 +262,4 @@ if __name__ == "__main__":
     parser.add_argument("--debug", action="store_true")
     args = parser.parse_args()
     engine = GameEngine(args.castle, debug_mode=args.debug); engine.start()
+start()

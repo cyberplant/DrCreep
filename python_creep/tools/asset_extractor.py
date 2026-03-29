@@ -15,7 +15,6 @@ def extract_sprites(object_file, output_dir):
         data = f.read()
     
     # Pointer table at address 0x603B
-    # File offset = 0x603B - 0x800 + 2 = 0x583D
     table_offset = 0x583D
     
     os.makedirs(output_dir, exist_ok=True)
@@ -24,7 +23,7 @@ def extract_sprites(object_file, output_dir):
         ptr_offset = table_offset + (i * 2)
         ptr = struct.unpack("<H", data[ptr_offset:ptr_offset+2])[0]
         
-        if ptr == 0: break # End of table (or invalid)
+        if ptr == 0: break
         
         file_offset = ptr - 0x800 + 2
         if file_offset >= len(data): continue
@@ -35,9 +34,7 @@ def extract_sprites(object_file, output_dir):
         flags = data[file_offset + 2]
         
         sprite_data = data[file_offset + 3:]
-        
-        is_multicolor = (flags & 0x80) != 0
-        width_px = width_blocks * 4 if is_multicolor else width_blocks * 8
+        width_px = width_blocks * 8
         
         if width_px == 0 or height == 0: continue
         
@@ -50,32 +47,34 @@ def extract_sprites(object_file, output_dir):
                 byte = sprite_data[data_ptr]
                 data_ptr += 1
                 
-                if is_multicolor:
-                    # 2 bits per pixel
-                    for p in range(4):
-                        shift = (3 - p) * 2
-                        bits = (byte >> shift) & 0x03
-                        
-                        color = None
-                        if bits == 0x01: color = C64_PALETTE[10] + (255,) # Light Red (Multi 0)
-                        elif bits == 0x02: color = C64_PALETTE[1] + (255,) # White (Primary)
-                        elif bits == 0x03: color = C64_PALETTE[13] + (255,) # Light Green (Multi 1)
-                        
-                        if color:
-                            px = (x_block * 4 + p)
-                            if px < width_px: pixels[px, y] = color
-                else:
-                    # 1 bit per pixel (High-Res)
-                    for p in range(8):
-                        bit = (byte >> (7 - p)) & 1
-                        if bit:
-                            px = (x_block * 8 + p)
-                            if px < width_px: pixels[px, y] = C64_PALETTE[1] + (255,)
+                # Process as multicolor (2 bits per pixel, doubled width)
+                for p in range(4):
+                    shift = (3 - p) * 2
+                    bits = (byte >> shift) & 0x03
+                    
+                    if bits != 0:
+                        px = (x_block * 8 + p * 2)
+                        if px < width_px:
+                            # Default color: White (for masks)
+                            color = (255, 255, 255, 255)
+                            
+                            # For player sprites (0-5), use original multicolor colors
+                            if i <= 5:
+                                if bits == 0x01: color = C64_PALETTE[10] + (255,) # Multi 1
+                                elif bits == 0x02: color = C64_PALETTE[1] + (255,)  # Primary
+                                elif bits == 0x03: color = C64_PALETTE[13] + (255,) # Multi 2
+                            
+                            pixels[px, y] = color
+                            pixels[px + 1, y] = color
 
-        img = img.transpose(Image.FLIP_LEFT_RIGHT)
+        # Flip horizontally to fix player orientation (0-5)
+        # Exception: Sprite 008 (Door Open) should NOT be flipped.
+        if i != 8:
+            img = img.transpose(Image.FLIP_LEFT_RIGHT)
+            
         img.save(os.path.join(output_dir, f"sprite_{i:03d}.png"))
     
-    print(f"Extracted sprites to {output_dir}")
+    print(f"Extracted sprites (0-5 original, others masks) to {output_dir}")
 
 def extract_tiles(char_rom, output_path):
     with open(char_rom, "rb") as f:
@@ -107,10 +106,8 @@ def extract_custom_tiles(object_file, output_path):
         f.seek(2) # Skip PRG header
         data = f.read()
     
-    # Custom tiles usually start at memory 0x1000
-    # Content is at 0x800 in mMemory, so 0x1000 is offset 0x800
     tiles_offset = 0x800
-    tiles_data = data[tiles_offset : tiles_offset + 2048] # 256 tiles
+    tiles_data = data[tiles_offset : tiles_offset + 2048]
     
     num_tiles = len(tiles_data) // 8
     cols = 16
