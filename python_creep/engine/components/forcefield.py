@@ -15,12 +15,12 @@ class ForcefieldComponent(BaseComponent):
     def process_proposal(self, engine, room, current_state, proposal):
         """Block entities if field is active."""
         if self.state == 1:
-            if abs(proposal['y'] - self.y) < 24:
+            if abs(proposal['y'] - self.y) < 32:
                 # Check if moving through the field
-                if current_state['x'] < self.x and proposal['x'] >= self.x - 4:
-                    proposal['x'] = self.x - 4
-                elif current_state['x'] > self.x and proposal['x'] <= self.x + 4:
-                    proposal['x'] = self.x + 4
+                if current_state.x <= self.x and proposal['x'] > self.x - 6:
+                    proposal['x'] = self.x - 6
+                elif current_state.x >= self.x and proposal['x'] < self.x + 6:
+                    proposal['x'] = self.x + 6
 
     def get_asset(self, tick):
         return self.STATES.get(self.state, self.STATES[1])

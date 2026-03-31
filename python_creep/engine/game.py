@@ -129,10 +129,10 @@ class GameEngine:
 
             # Resolve discrete intent
             dx, dy = 0, 0
-            if cmds.get('left'): dx = -1.2
-            elif cmds.get('right'): dx = 1.2
-            if cmds.get('up'): dy = -1.2
-            elif cmds.get('down'): dy = 1.2
+            if cmds.get('left'): dx = -1
+            elif cmds.get('right'): dx = 1
+            if cmds.get('up'): dy = -1
+            elif cmds.get('down'): dy = 1
 
             proposal = {
                 'x': ent.x + dx,
@@ -214,6 +214,8 @@ class GameEngine:
             'projectiles': [p.serialize() for p in self.state.projectiles],
             'rooms': {rid: {
                 'color': r.color & 0xF,
+                'map_x': getattr(r, 'map_x', 0),
+                'map_y': getattr(r, 'map_y', 0),
                 'lightning_systems': {str(k): v for k, v in self.room_states[rid]['lightning'].items()}, 
                 'objects': [o.serialize(self.state.current_tick) for o in r.objects]
             } for rid, r in self.state.rooms.items()}

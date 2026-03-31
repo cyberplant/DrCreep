@@ -6,6 +6,7 @@ import sys
 import os
 import time
 import argparse
+from datetime import datetime
 
 from python_creep.clients.pygame.assets import C64_PALETTE, C64Assets
 
@@ -30,7 +31,6 @@ class PygameClient:
             self.audio_enabled = False
             
         self.sounds = {}
-        
         self.clock = pygame.time.Clock()
         
         self.host, self.port = host, port
@@ -51,7 +51,6 @@ class PygameClient:
         custom_tile_path = os.path.join(project_root, "data", "custom_tileset.png")
         
         # Load assets
-        print(f"DEBUG: Project Root identified as: {project_root}")
         self.assets = C64Assets(sprite_path, tile_path, custom_tile_path)
         
         # Scaling (Native internal, Scaled display)
@@ -104,6 +103,8 @@ class PygameClient:
                     self.running = False
                 elif event.key == pygame.K_k:
                     self._send_input({'respawn': True})
+                elif event.key == pygame.K_r:
+                    self._send_input({'restart': True})
         
         keys = pygame.key.get_pressed()
         cmds = {
@@ -117,8 +118,8 @@ class PygameClient:
             self._send_input(cmds)
 
     def _take_screenshot(self):
-        # Save exactly what is shown on screen (960x600)
-        filename = f"screenshot_{int(time.time())}.png"
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        filename = f"screenshot_{timestamp}.png"
         pygame.image.save(self.screen, filename)
         print(f"DEBUG: Screenshot saved to {filename}")
         self._screenshot_requested = False
@@ -127,22 +128,22 @@ class PygameClient:
     def py(self, y): return int(y)
 
     def ascii_to_screen_code(self, char):
-        c = ord(char)
+        c = ord(char) if isinstance(char, str) else char
         if 64 <= c <= 95: return c - 64
         if 32 <= c <= 63: return c
         if 96 <= c <= 127: return c - 64
         return c & 0x3F
 
     def draw_char(self, char, x_px, y_px, color_idx):
-        code = self.ascii_to_screen_code(char) if isinstance(char, str) else char
+        code = self.ascii_to_screen_code(char)
         tile = self.assets.get_tile(code, color_idx)
         if tile:
             self.world_surface.blit(tile, (x_px, y_px))
 
-    def draw_custom_char(self, char_idx, x_px, y_px, color_idx):
-        tile = self.assets.get_tile(char_idx, color_idx, custom=True)
-        if tile:
-            self.world_surface.blit(tile, (x_px, y_px))
+    def draw_env_sprite(self, sprite_id, x_px, y_px, color_idx=1):
+        sprite = self.assets.get_colored_sprite(sprite_id, color_idx)
+        if sprite:
+            self.world_surface.blit(sprite, (x_px, y_px))
 
     def _render_map_view(self):
         self.world_surface.fill((0, 0, 0))
@@ -150,77 +151,96 @@ class PygameClient:
         title = font.render("CASTLE MAP", True, (255, 255, 255))
         self.world_surface.blit(title, (110, 5))
 
-        # Safely get transition dict to avoid AttributeError
         transition = self.state.get('transition') or {}
         target_room_id = transition.get('to_room')
         discovered = self.state.get('discovered_rooms', [])
         
-        # Scaling for the map
+        all_rooms = self.state.get('rooms', {})
         ROOM_W, ROOM_H = 30, 20
-        OFFSET_X, OFFSET_Y = 20, 30
+        # map_x and map_y are grid indices, so scale them to space the rooms out
+        SCALE_X, SCALE_Y = ROOM_W + 10, ROOM_H + 10
+        MARGIN_X, MARGIN_Y = 40, 40
         
-        # 1. Draw discovered rooms and the target room
-        for r_id_str, r_data in self.state.get('rooms', {}).items():
-            r_id = int(r_id_str)
-            if r_id not in discovered and r_id != target_room_id:
-                continue
+        if self.debug_mode:
+            print(f"\n--- MAP VIEW DEBUG (Tick {self.state.get('tick')}) ---")
+            print(f"Target Room: {target_room_id}")
+            print(f"Discovered: {discovered}")
 
-            mx, my = r_data.get('map_x', 0), r_data.get('map_y', 0)
-            rx = OFFSET_X + mx * 1.2
-            ry = OFFSET_Y + my * 0.7
-            color = C64_PALETTE[r_data.get('color', 1)]
+        for r_id_str, r_data in all_rooms.items():
+            r_id = int(r_id_str)
+            is_target = (r_id == target_room_id)
+            is_discovered = (r_id in discovered)
             
-            # Fill the room box
+            if not is_discovered and not is_target:
+                continue
+            
+            mx, my = r_data.get('map_x', 0), r_data.get('map_y', 0)
+            rx = MARGIN_X + mx * SCALE_X
+            ry = MARGIN_Y + my * SCALE_Y
+            
+            if self.debug_mode:
+                status = "TARGET" if is_target else "DISCOVERED"
+                print(f"Room {r_id:02}: map_pos=({mx},{my}) screen_pos=({int(rx)},{int(ry)}) status={status}")
+
+            color = C64_PALETTE[r_data.get('color', 1)]
             pygame.draw.rect(self.world_surface, color, (rx, ry, ROOM_W, ROOM_H), 1)
             
-            # Draw "door holes"
+            # Draw door holes
             for obj in r_data.get('objects', []):
                 if obj['type'] == 'door':
-                    dx, dy = obj['x'], obj['y']
-                    if dy < 10: # North
-                        pygame.draw.line(self.world_surface, (0, 0, 0), (rx + 10, ry), (rx + 20, ry), 2)
-                    elif dy > 180: # South
-                        pygame.draw.line(self.world_surface, (0, 0, 0), (rx + 10, ry + ROOM_H), (rx + 20, ry + ROOM_H), 2)
-                    elif dx < 20: # West
-                        pygame.draw.line(self.world_surface, (0, 0, 0), (rx, ry + 5), (rx, ry + 15), 2)
-                    elif dx > 170: # East
-                        pygame.draw.line(self.world_surface, (0, 0, 0), (rx + ROOM_W, ry + 5), (rx + ROOM_W, ry + 15), 2)
+                    ox, oy = obj['x'], obj['y']
+                    # Draw a black line to create a "hole" in the colored box
+                    if oy < 10: pygame.draw.line(self.world_surface, (0,0,0), (rx+10, ry), (rx+20, ry), 2) # Top
+                    elif oy > 180: pygame.draw.line(self.world_surface, (0,0,0), (rx+10, ry+ROOM_H-1), (rx+20, ry+ROOM_H-1), 2) # Bottom
+                    elif ox < 20: pygame.draw.line(self.world_surface, (0,0,0), (rx, ry+5), (rx, ry+15), 2) # Left
+                    elif ox > 170: pygame.draw.line(self.world_surface, (0,0,0), (rx+ROOM_W-1, ry+5), (rx+ROOM_W-1, ry+15), 2) # Right
 
-            if r_id == target_room_id:
+            if is_target:
                 tick = self.state.get('tick', 0)
-                if (tick // 10) % 2 == 0:  # Blinking indicator (The "Flashy Arrow")
-                    target_dx, target_dy = transition.get('door_x', 80), transition.get('door_y', 0)
-                    ax, ay = rx + 15, ry + 10 # Default center
-                    if target_dy < 10: ax, ay = rx + 15, ry - 5
-                    elif target_dy > 180: ax, ay = rx + 15, ry + ROOM_H + 5
-                    elif target_dx < 20: ax, ay = rx - 5, ry + 10
-                    elif target_dx > 170: ax, ay = rx + ROOM_W + 5, ry + 10
+                if (tick // 10) % 2 == 0:
+                    ddir = transition.get('door_dir', 0)
+                    # Dr. Creep directions: 0=From Left, 1=From Right, 2=From Top, 3=From Bottom
+                    ax, ay = rx + ROOM_W//2, ry + ROOM_H//2
+                    if ddir == 0: ax, ay = rx - 8, ry + ROOM_H//2 # Enter from LEFT wall
+                    elif ddir == 1: ax, ay = rx + ROOM_W + 8, ry + ROOM_H//2 # Enter from RIGHT wall
+                    elif ddir == 2: ax, ay = rx + ROOM_W//2, ry - 8 # Enter from TOP wall
+                    elif ddir == 3: ax, ay = rx + ROOM_W//2, ry + ROOM_H + 8 # Enter from BOTTOM wall
+                    
+                    pts = [(ax, ay)]
+                    if ddir == 0: pts += [(ax-5, ay-5), (ax-5, ay+5)] # Pointing RIGHT into left door
+                    elif ddir == 1: pts += [(ax+5, ay-5), (ax+5, ay+5)] # Pointing LEFT into right door
+                    elif ddir == 2: pts += [(ax-5, ay-5), (ax+5, ay-5)] # Pointing DOWN into top door
+                    elif ddir == 3: pts += [(ax-5, ay+5), (ax+5, ay+5)] # Pointing UP into bottom door
+                    pygame.draw.polygon(self.world_surface, (255, 255, 255), pts)
 
-                    pygame.draw.circle(self.world_surface, (255, 255, 255), (int(ax), int(ay)), 3)
-        
         font_small = pygame.font.SysFont(None, 16)
         msg = font_small.render("Press ACTION (Space) to enter", True, (200, 200, 200))
         self.world_surface.blit(msg, (80, 185))
 
-        # Final Blit (3x Scaling)
         scaled = pygame.transform.scale(self.world_surface, self.screen.get_size())
         self.screen.blit(scaled, (0, 0))
-        
-        if self._screenshot_requested:
-            self._take_screenshot()
-            
+        if self._screenshot_requested: self._take_screenshot()
         pygame.display.flip()
 
     def render(self):
         self.world_surface.fill(C64_PALETTE[0])
-        
         if not self.state:
             font = pygame.font.SysFont(None, 24)
             img = font.render("Waiting for server state...", True, (255, 255, 255))
             self.world_surface.blit(img, (80, 90))
             scaled = pygame.transform.scale(self.world_surface, self.screen.get_size())
-            self.screen.blit(scaled, (0, 0))
-            pygame.display.flip()
+            self.screen.blit(scaled, (0, 0)); pygame.display.flip()
+            return
+
+        if self.state.get('victory'):
+            font = pygame.font.SysFont(None, 36)
+            title = font.render("YOU HAVE ESCAPED!", True, (255, 255, 255))
+            font_small = pygame.font.SysFont(None, 18)
+            msg = font_small.render("Press R to restart or Q to quit", True, (200, 200, 200))
+            self.world_surface.blit(title, (40, 80))
+            self.world_surface.blit(msg, (60, 120))
+            scaled = pygame.transform.scale(self.world_surface, self.screen.get_size())
+            self.screen.blit(scaled, (0, 0)); pygame.display.flip()
             return
             
         if self.state.get('transition'):
@@ -230,119 +250,138 @@ class PygameClient:
         try:
             if self.audio_enabled:
                 for ev in self.state.get('events', []):
-                    if ev in self.sounds:
-                        self.sounds[ev].play()
+                    if ev in self.sounds: self.sounds[ev].play()
 
             player = self.state['players'][0]
             room_id = str(player['room_id'])
             room = self.state['rooms'].get(room_id)
             if room:
                 if room_id != self._last_room_id:
-                    self._log_room_objects(room_id, room)
                     self._last_room_id = room_id
 
                 room_color = room.get('color', 1)
                 tick = self.state.get('tick', 0)
 
-                # Draw Objects
                 for obj in room['objects']:
                     ot = obj['type']
-                    ox, oy = obj['x'], obj['y']
+                    px, py = self.px(obj['x']), self.py(obj['y'])
                     props = obj.get('properties', {})
                     obj_state = obj.get('state', 0)
-                    px, py = self.px(ox), self.py(oy)
                     
+                    # Environment rendering using ACTUAL C64 sprites from OBJECT file
                     if ot == 'walkway':
-                        for i in range(props.get('length', 0)):
-                            self.draw_char(64, px + i * 8, py, room_color)
-                            self.draw_char(105, px + i * 8, py + 8, room_color)
+                        length = props.get('length', 0)
+                        for i in range(length):
+                            sid = 28 # Middle (0x1C)
+                            if i == 0: sid = 27 # Left (0x1B)
+                            elif i == length - 1: sid = 29 # Right (0x1D)
+                            self.draw_env_sprite(sid, px + i * 8, py, room_color)
                     elif ot == 'ladder':
-                        for i in range(max(0, props.get('length', 0) * 2 - 2)):
-                            self.draw_char('#', px, py + i * 8, 1) # White
+                        length = props.get('length', 0)
+                        for i in range(length + 1): # +1 to reach bottom path
+                            sid = 40 if i < length else 43 # 0x28 or 0x2B
+                            self.draw_env_sprite(sid, px, py + i * 8, 1) # White
                     elif ot == 'pole':
-                        # Use similar physical range as ladder so it touches the floor
-                        for i in range(max(0, props.get('length', 0) * 2)):
-                            self.draw_char(']', px, py + i * 8, 1) # White
+                        length = props.get('length', 0)
+                        for i in range(length + 1):
+                            sid = 36 # 0x24
+                            self.draw_env_sprite(sid, px, py + i * 8, 1)
                     elif ot == 'door':
                         color_idx = 2 if props.get('is_exit') else room_color
                         frame_sprite = self.assets.get_colored_sprite(6, color_idx)
                         if frame_sprite: self.world_surface.blit(frame_sprite, (px, py))
-                        
-                        # Door interiors need to be offset to fit inside the 24x21 frame.
                         int_offset = (px + 8, py + 17)
-                        
-                        if obj_state == 0: # Closed
+                        if obj_state == 0:
                             int_sprite = self.assets.get_colored_sprite(7, 1)
                             if int_sprite: self.world_surface.blit(int_sprite, int_offset)
-                        elif obj_state >= 1: # Open
+                        elif obj_state >= 1:
                             nr_id = str(props.get('link_room', ''))
                             nr_data = self.state['rooms'].get(nr_id)
                             nr_color_id = nr_data.get('color', 1) if nr_data else 1
                             int_sprite = self.assets.get_colored_sprite(8, nr_color_id)
                             if int_sprite: self.world_surface.blit(int_sprite, int_offset)
-
                     elif ot == 'text':
                         char_w = 8
                         for i, char in enumerate(props.get('text', "")):
                             code = self.ascii_to_screen_code(char)
                             tile = self.assets.get_tile(code, props.get('color', 1))
-                            if tile:
-                                self.world_surface.blit(tile, (px + i * char_w, py))
-                    elif ot in ['key', 'lock', 'doorbell', 'teleport', 'teleport_target', 'mummy_tomb', 'mummy_release', 'trapdoor_switch', 'conveyor', 'conveyor_switch', 'forcefield', 'forcefield_switch']:
-                        if ot == 'doorbell':
-                            # Force doorbells to white (color index 1)
-                            bell_sprite = self.assets.get_colored_sprite(9, 1)
-                            if bell_sprite: self.world_surface.blit(bell_sprite, (px, py))
-                        elif ot == 'forcefield':
-                            # Draw forcefield as white vertical lines/rect when active
-                            if obj_state > 0:
-                                pygame.draw.rect(self.world_surface, C64_PALETTE[1], (px, py, 8, 32), 1)
-                                for i in range(4):
-                                    pygame.draw.line(self.world_surface, C64_PALETTE[1], (px + i*2, py), (px + i*2, py + 32))
-                        elif ot == 'forcefield_switch':
-                            self.draw_char('S', px, py, 1) # White switch
-                        elif ot == 'key': self.draw_char('K', px, py, props.get('color', 1))
-                        elif ot == 'lock': self.draw_char('X', px, py, props.get('color', 1))
-                        elif ot == 'teleport': self.draw_char('T', px, py, obj_state)
-                        elif ot == 'teleport_target': self.draw_char('t', px, py, props.get('color', 1))
-                        elif ot == 'mummy_tomb':
-                            for dy in range(3):
-                                for dx in range(5): self.draw_char('#', px + dx * 8, py + dy * 8, 2)
-                        elif ot == 'mummy_release': self.draw_char('M', px, py, 1)
-                        elif ot == 'trapdoor_switch': self.draw_char('o', px, py, 3)
-                        elif ot == 'conveyor':
-                            for i in range(10): self.draw_char(64, px + i * 8, py, 6)
-                        elif ot == 'conveyor_switch': self.draw_char(81, px, py, 1)
+                            if tile: self.world_surface.blit(tile, (px + i * char_w, py))
+                    elif ot == 'forcefield':
+                        if obj_state > 0:
+                            self.draw_env_sprite(62, px - 4, py, 1) # Top laser emitter (0x3E)
+                            for i in range(4): # Draw vertical laser segments (fallback to rects for fidelity if sprite unknown)
+                                pygame.draw.rect(self.world_surface, C64_PALETTE[1], (px+2, py + 6 + i*8, 2, 8))
+                    elif ot == 'forcefield_switch':
+                        self.draw_env_sprite(63, px, py, 1) # Outer timer (0x3F)
+                        self.draw_env_sprite(64, px+4, py+8, 1) # Inner timer (0x40)
+                    elif ot == 'lightning_machine':
+                        sys_id = props.get('system_id', 0)
+                        is_on = room.get('lightning_systems', {}).get(str(sys_id), False)
+                        for i in range(props.get('length', 4)):
+                            self.draw_env_sprite(50, px, py + i * 8, 12) # Poles (0x32)
+                        self.draw_env_sprite(51, px - 4, py + props.get('length', 4) * 8, 12) # Spheres (0x33)
+                        if is_on and (tick // 2) % 2 == 0:
+                            self.draw_env_sprite(94, px, py + props.get('length', 4) * 8 + 8, 1) # Sparks (approx 0x5E)
+                    elif ot == 'lightning_switch':
+                        self.draw_env_sprite(54, px, py, 1) # Switch Base (0x36)
+                        self.draw_env_sprite(55, px + 4, py + 8, 1) # Switch Lever (0x37)
+                    elif ot == 'doorbell':
+                        target_id = props.get('target_door_idx')
+                        target_room_color = 1
+                        if target_id is not None and target_id < len(room['objects']):
+                            link_room_str = str(room['objects'][target_id].get('properties', {}).get('link_room', ''))
+                            if link_room_str in self.state['rooms']:
+                                target_room_color = self.state['rooms'][link_room_str].get('color', 1)
+                        # Draw solid background color for the ring
+                        pygame.draw.rect(self.world_surface, C64_PALETTE[target_room_color], (px+8, py+8, 8, 8))
+                        # Draw white mask doorbell sprite on top
+                        bell_sprite = self.assets.get_colored_sprite(9, 1)
+                        if bell_sprite: self.world_surface.blit(bell_sprite, (px, py))
+                    elif ot == 'key': self.draw_env_sprite(13, px, py, props.get('color', 1)) # Key (0x0D)
+                    elif ot == 'lock': self.draw_env_sprite(14, px, py, props.get('color', 1)) # Lock (0x0E)
+                    elif ot == 'teleport': 
+                        if obj_state > 0: self.draw_env_sprite(22, px, py, 1) # Active
+                        else: self.draw_env_sprite(21, px, py, 1) # Base
+                    elif ot == 'teleport_target': self.draw_env_sprite(23, px, py, props.get('color', 1))
+                    elif ot == 'mummy_tomb':
+                        for dy in range(3):
+                            for dx in range(5): self.draw_env_sprite(66, px + dx * 8, py + dy * 8, 2) # Tomb Blocks (0x42)
+                    elif ot == 'mummy_release': self.draw_env_sprite(68, px, py, 1) # Button (0x44)
+                    elif ot == 'trapdoor_switch': self.draw_env_sprite(46, px, py, 3) # Switch (0x2E)
+                    elif ot == 'conveyor':
+                        # The belt is sprite 125 (0x7D)
+                        for i in range(10): self.draw_env_sprite(125, px + i * 8, py, 6)
+                    elif ot == 'conveyor_switch': self.draw_env_sprite(130, px, py, 1) # Conveyor switch (0x82)
+                    elif ot == 'raygun':
+                        self.draw_env_sprite(95, px, py, 2) # Gun base (0x5F)
+                    elif ot == 'raygun_switch':
+                        self.draw_env_sprite(54, px, py, 1) # Same base as lightning
 
-                # Draw Entities
+                # Entities
                 for m in self.state.get('mummies', []):
                     if str(m['room_id']) == room_id:
                         self.draw_entity_sprite('mummy', m['x'], m['y'], m.get('facing_left'), m.get('is_moving'), tick)
-
                 for f in self.state.get('frankies', []):
                     if str(f['room_id']) == room_id:
                         self.draw_entity_sprite('frankie', f['x'], f['y'], f.get('facing_left'), f.get('is_moving'), tick)
-
                 self.draw_entity_sprite('player', player['x'], player['y'], player.get('facing_left'), player.get('is_moving'), tick, color_idx=player.get('color', 1))
                 
-                if self.debug_mode:
-                    self._draw_grid()
+                # Projectiles
+                for proj in self.state.get('projectiles', []):
+                    if str(proj['room_id']) == room_id:
+                        # Draw red laser bolt (approx)
+                        pygame.draw.rect(self.world_surface, C64_PALETTE[2], (self.px(proj['x']), self.py(proj['y']), 8, 2))
 
-        except Exception as e:
-            print(f"ERROR: Render exception: {e}")
+                if self.debug_mode: self._draw_grid()
+        except Exception as e: print(f"ERROR: Render exception: {e}")
 
-        # Final Blit (3x Scaling)
         scaled = pygame.transform.scale(self.world_surface, self.screen.get_size())
         self.screen.blit(scaled, (0, 0))
-        
-        if self._screenshot_requested:
-            self._take_screenshot()
-            
+        if self._screenshot_requested: self._take_screenshot()
         pygame.display.flip()
 
     def _draw_grid(self):
         font = pygame.font.SysFont(None, 12)
-        # Draw every 10 world units
         for wx in range(16, 177, 10):
             px = self.px(wx)
             pygame.draw.line(self.world_surface, (40, 40, 40), (px, 0), (px, 200))
@@ -364,25 +403,14 @@ class PygameClient:
         sprite_id = 0
         if etype == 'player':
             base = 3 if facing_left else 0
-            # Speed up animation cycle to avoid "floating" feel
-            frame = (tick // 5) % 3 if is_moving else 0
+            frame = (tick // 2) % 3 if is_moving else 0
             sprite_id = base + frame
-        elif etype == 'mummy':
-            sprite_id = 0x4B if facing_left else 0x4E
-        elif etype == 'frankie':
-            sprite_id = 0x87 if facing_left else 0x84
+        elif etype == 'mummy': sprite_id = 0x4B if facing_left else 0x4E
+        elif etype == 'frankie': sprite_id = 0x87 if facing_left else 0x84
         
-        if color_idx is not None:
-            sprite = self.assets.get_colored_sprite(sprite_id, color_idx)
+        sprite = self.assets.get_colored_sprite(sprite_id, color_idx) if color_idx is not None else self.assets.get_sprite(sprite_id)
+        if sprite: self.world_surface.blit(sprite, (self.px(x) - 8, self.py(y) - 21))
         else:
-            sprite = self.assets.get_sprite(sprite_id)
-
-        if sprite:
-            self.world_surface.blit(sprite, (self.px(x) - 8, self.py(y) - 21))
-        else:
-            if etype not in self._reported_fallbacks:
-                print(f"DEBUG: Using fallback for {etype} (Sprite ID {sprite_id})")
-                self._reported_fallbacks.add(etype)
             color = C64_PALETTE[1]
             if etype == 'mummy': color = C64_PALETTE[15]
             elif etype == 'frankie': color = C64_PALETTE[5]

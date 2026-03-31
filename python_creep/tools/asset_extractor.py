@@ -23,7 +23,7 @@ def extract_sprites(object_file, output_dir):
         ptr_offset = table_offset + (i * 2)
         ptr = struct.unpack("<H", data[ptr_offset:ptr_offset+2])[0]
         
-        if ptr == 0: break
+        if ptr == 0: continue # Skip empty slots instead of breaking loop
         
         file_offset = ptr - 0x800 + 2
         if file_offset >= len(data): continue
@@ -44,6 +44,8 @@ def extract_sprites(object_file, output_dir):
         data_ptr = 0
         for y in range(height):
             for x_block in range(width_blocks):
+                if data_ptr >= len(sprite_data):
+                    continue
                 byte = sprite_data[data_ptr]
                 data_ptr += 1
                 
@@ -58,8 +60,8 @@ def extract_sprites(object_file, output_dir):
                             # Default color: White (for masks)
                             color = (255, 255, 255, 255)
                             
-                            # For player sprites (0-5), use original multicolor colors
-                            if i <= 5:
+                            # For player, mummy and frankie sprites, use original multicolor colors
+                            if i <= 5 or (75 <= i <= 80) or (132 <= i <= 138):
                                 if bits == 0x01: color = C64_PALETTE[10] + (255,) # Multi 1
                                 elif bits == 0x02: color = C64_PALETTE[1] + (255,)  # Primary
                                 elif bits == 0x03: color = C64_PALETTE[13] + (255,) # Multi 2
@@ -67,14 +69,15 @@ def extract_sprites(object_file, output_dir):
                             pixels[px, y] = color
                             pixels[px + 1, y] = color
 
-        # Flip horizontally to fix player orientation (0-5)
+        # Flip horizontally to fix animation orientation for characters
         # Exception: Sprite 008 (Door Open) should NOT be flipped.
-        if i != 8:
+        # Let's just flip the character ranges instead of excluding 8.
+        if i <= 5 or (75 <= i <= 80) or (132 <= i <= 138):
             img = img.transpose(Image.FLIP_LEFT_RIGHT)
             
         img.save(os.path.join(output_dir, f"sprite_{i:03d}.png"))
     
-    print(f"Extracted sprites (0-5 original, others masks) to {output_dir}")
+    print(f"Extracted sprites to {output_dir}")
 
 def extract_tiles(char_rom, output_path):
     with open(char_rom, "rb") as f:
