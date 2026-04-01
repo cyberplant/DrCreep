@@ -32,6 +32,15 @@ class GameEngine:
         self.pending_commands = {} # player_id -> commands
         self.debug_mode = debug_mode
         
+        if self.debug_mode:
+            log_engine(f"--- MAP DATA DEBUG DUMP ---")
+            log_engine(f"Parsed {len(self.state.rooms)} rooms.")
+            for room_id, room in self.state.rooms.items():
+                log_engine(f"Room {room_id}: color={room.color}, map_pos=({getattr(room, 'map_x', 0)}, {getattr(room, 'map_y', 0)})")
+                for obj in room.objects:
+                    log_engine(f"  - Component: {obj.type} | props: {obj.properties}")
+            log_engine(f"---------------------------")
+        
         self.room_states = {}
         for rid, room in self.state.rooms.items():
             self.room_states[rid] = {'lightning': {}}
@@ -88,10 +97,16 @@ class GameEngine:
         self.state.current_tick += 1
         self.state.events = []
         
-        if getattr(self.state, 'transition', None):
+        tr = getattr(self.state, 'transition', None)
+        if tr:
+            if not getattr(self.state, '_transition_logged', False) and self.debug_mode:
+                log(f"--- MAP VIEW DEBUG (Tick {self.state.current_tick}) ---", style="cyan")
+                log(f"Target Room: {tr['to_room']}", style="cyan")
+                log(f"Discovered: {list(getattr(self.state, 'discovered_rooms', set()))}", style="cyan")
+                self.state._transition_logged = True
+                
             cmds = self.pending_commands.get(0, {})
             if cmds.get('action'):
-                tr = self.state.transition
                 p = self.state.players[0]
                 p.room_id = tr['to_room']
                 self.state.discovered_rooms.add(p.room_id)
@@ -100,6 +115,7 @@ class GameEngine:
                     tr['target_door'].state = tr['target_state']
                 p.is_acting = 0
                 self.state.transition = None
+                self.state._transition_logged = False
             self.pending_commands = {}
             return
 
@@ -208,6 +224,7 @@ class GameEngine:
             'transition': trans,
             'victory': self.state.victory,
             'debug_mode': self.debug_mode,
+            'discovered_rooms': list(getattr(self.state, 'discovered_rooms', set())),
             'players': [{'id': p.id, 'x': p.x, 'y': p.y, 'room_id': p.room_id, 'keys': p.keys, 'is_moving': getattr(p, 'is_moving', False), 'is_acting': getattr(p, 'is_acting', 0), 'is_teleporting': getattr(p, 'is_teleporting', 0), 'facing_left': getattr(p, 'facing_left', False)} for p in self.state.players],
             'mummies': [m.serialize() for m in self.state.mummies],
             'frankies': [f.serialize() for f in self.state.frankies],

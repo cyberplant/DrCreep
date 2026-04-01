@@ -33,6 +33,8 @@ class TestRoom0:
         
         engine.handle_input(0, {'up': True})
         engine._update()
+        # Call update once more so the transition logic runs and logs the debug
+        engine._update()
         
         assert engine.state.transition is not None
         

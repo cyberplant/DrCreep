@@ -172,11 +172,31 @@ class PygameRenderer:
                     
                     if ot == 'walkway':
                         length = props.get('length', 0)
+                        ladder_xs = set()
+                        for other in room['objects']:
+                            if other['type'] == 'ladder':
+                                l_py = self.py(other['y'])
+                                l_len = other.get('properties', {}).get('length', 0)
+                                if l_py <= py <= l_py + l_len * 8:
+                                    ladder_xs.add(self.px(other['x']))
+
                         for i in range(length):
                             sid = 28 # Middle (0x1C)
                             if i == 0: sid = 27 # Left (0x1B)
                             elif i == length - 1: sid = 29 # Right (0x1D)
-                            self.draw_env_sprite(sid, px + i * 8, py, room_color)
+                            
+                            seg_x = px + i * 8
+                            self.draw_env_sprite(sid, seg_x, py, room_color)
+                            
+                            # Draw 1px shadow under the walkway
+                            pygame.draw.line(self.world_surface, C64_PALETTE[0], (seg_x, py + 8), (seg_x + 7, py + 8))
+                            # Draw 1px shadow on the right edge of the last segment
+                            if i == length - 1:
+                                pygame.draw.line(self.world_surface, C64_PALETTE[0], (seg_x + 8, py), (seg_x + 8, py + 8))
+                                
+                            # Cut the walkway visually where a ladder intersects
+                            if seg_x in ladder_xs:
+                                pygame.draw.rect(self.world_surface, C64_PALETTE[0], (seg_x + 2, py, 4, 8))
                     elif ot == 'ladder':
                         length = props.get('length', 0)
                         for i in range(length + 1): # +1 to reach bottom path
@@ -188,7 +208,7 @@ class PygameRenderer:
                             sid = 36 # 0x24
                             self.draw_env_sprite(sid, px, py + i * 8, 1)
                     elif ot == 'door':
-                        color_idx = 2 if props.get('is_exit') else room_color
+                        color_idx = 2 if props.get('is_exit') else 4
                         frame_sprite = self.assets.get_colored_sprite(6, color_idx)
                         if frame_sprite: self.world_surface.blit(frame_sprite, (px, py))
                         int_offset = (px + 8, py + 17)
@@ -202,11 +222,19 @@ class PygameRenderer:
                             int_sprite = self.assets.get_colored_sprite(8, nr_color_id)
                             if int_sprite: self.world_surface.blit(int_sprite, int_offset)
                     elif ot == 'text':
-                        char_w = 8
+                        font_id = props.get('font', 0)
+                        scale_w = 2 if font_id in (33, 34) else 1
+                        scale_h = 2 if font_id == 34 else 1
+                        char_w = 8 * scale_w
+                        char_h = 8 * scale_h
+                        
                         for i, char in enumerate(props.get('text', "")):
                             code = self.ascii_to_screen_code(char)
                             tile = self.assets.get_tile(code, props.get('color', 1))
-                            if tile: self.world_surface.blit(tile, (px + i * char_w, py))
+                            if tile:
+                                if scale_w > 1 or scale_h > 1:
+                                    tile = pygame.transform.scale(tile, (char_w, char_h))
+                                self.world_surface.blit(tile, (px + i * char_w, py))
                     elif ot == 'forcefield':
                         if obj_state > 0:
                             self.draw_env_sprite(62, px - 4, py, 1) # Top laser emitter (0x3E)
@@ -258,7 +286,7 @@ class PygameRenderer:
                 # Entities
                 for m in state.get('mummies', []):
                     if str(m['room_id']) == room_id:
-                        self.draw_entity_sprite('mummy', m['x'], m['y'], m.get('facing_left'), m.get('is_moving'), tick)
+                        self.draw_entity_sprite('mummy', m['x'], m['y'], m.get('facing_left'), m.get('is_moving'), tick, color_idx=1)
                 for f in state.get('frankies', []):
                     if str(f['room_id']) == room_id:
                         self.draw_entity_sprite('frankie', f['x'], f['y'], f.get('facing_left'), f.get('is_moving'), tick)
