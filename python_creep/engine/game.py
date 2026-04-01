@@ -196,13 +196,13 @@ class GameEngine:
         
         self.pending_commands = {}
 
-    def _broadcast(self):
+    def get_state_dict(self):
         # Sanitize transition for broadcast (remove non-serializable objects)
         trans = getattr(self.state, 'transition', None)
         if trans:
             trans = {k: v for k, v in trans.items() if k != 'target_door'}
 
-        state_dict = {
+        return {
             'tick': self.state.current_tick,
             'events': getattr(self.state, 'events', []),
             'transition': trans,
@@ -212,7 +212,7 @@ class GameEngine:
             'mummies': [m.serialize() for m in self.state.mummies],
             'frankies': [f.serialize() for f in self.state.frankies],
             'projectiles': [p.serialize() for p in self.state.projectiles],
-            'rooms': {rid: {
+            'rooms': {str(rid): {
                 'color': r.color & 0xF,
                 'map_x': getattr(r, 'map_x', 0),
                 'map_y': getattr(r, 'map_y', 0),
@@ -220,6 +220,9 @@ class GameEngine:
                 'objects': [o.serialize(self.state.current_tick) for o in r.objects]
             } for rid, r in self.state.rooms.items()}
         }
+
+    def _broadcast(self):
+        state_dict = self.get_state_dict()
         self.network.broadcast_state(state_dict)
 
     def handle_input(self, player_id, commands):
@@ -264,4 +267,3 @@ if __name__ == "__main__":
     parser.add_argument("--debug", action="store_true")
     args = parser.parse_args()
     engine = GameEngine(args.castle, debug_mode=args.debug); engine.start()
-start()
