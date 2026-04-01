@@ -70,10 +70,30 @@ This project is a modern Python port of the classic C64 game "The Castles of Dr.
 
 ---
 
+## Quality Assurance & Visual Fidelity
+
+### 1. Automated Testing Suite (`tests/`)
+*   **Room-Specific Tests**: Each room in `ZTUTORIAL` has a dedicated test file (e.g., `tests/test_room_0.py`).
+*   **Visual Regression**: Every room test includes a `test_render` method that compares the Pygame output against optimized original screenshots in `Screenshots_OriginalGame/`.
+*   **Thresholds**: A global threshold (currently 45%) is used to account for emulator artifacts and scaling differences.
+
+### 2. Visual Fidelity QA Workflow
+Before making any changes to rendering logic or component visuals, follow this mandatory process:
+1.  **Record Baseline**: Run the tests and note the current difference percentages:
+    `pytest tests/ -v -s | grep "VISUAL DIFF"`
+2.  **Apply Changes**: Fulfill the implementation or refactoring task.
+3.  **Verify Improvement/Regression**: Run the tests again and compare the new percentages against your recorded baseline.
+    *   **Goal**: The percentage should decrease (better similarity) or stay the same.
+    *   **Alert**: If the percentage increases significantly, investigate the visual regression.
+
+---
+
 ## Tooling
 *   `tools/asset_extractor.py`: Extracts RGBA tiles and auto-detects sprite modes.
 *   `engine/png_exporter.py`: Renders a full room map to a pixel-accurate PNG for layout debugging.
-*   `tests/test_mechanics.py`: Pytest suite for regression testing door links and physics.
+*   `tests/`: Comprehensive test suite using `pytest`.
+    *   `tests/conftest.py`: Shared fixtures for `engine` and `renderer`.
+    *   `tests/utils.py`: Visual comparison and assertion helpers.
 
 ---
 

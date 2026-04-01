@@ -72,6 +72,7 @@ def assert_render_match(engine, renderer, room_id, screenshot_name, tmp_path, th
     rendered_img.save(f"{diff_dir}/rendered_{screenshot_name}")
     
     diff_percent = get_image_diff_percent(rendered_img, resized_original)
+    print(f"VISUAL DIFF: Room {room_id} vs {screenshot_name} = {diff_percent:.2f}%")
     assert diff_percent < threshold, f"Room {room_id} differs from {screenshot_name} by {diff_percent:.2f}%"
 
 def verify_not_black(img, name="Image"):
