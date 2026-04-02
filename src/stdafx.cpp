@@ -32,11 +32,7 @@ const char   *VERSION = "v1.3";
 const char	 *gDataPath = "data/";
 const char	 *gSavePath = "data/save/";
 
-#ifdef _MACOSX
-int SDL_main( int argc, char *argv[]) {
-#else
 int	main( int argc, char *argv[] ) {
-#endif
     
 #ifdef WIN32
 	SetConsoleTitle( L"The Castles of Dr.Creep" );
