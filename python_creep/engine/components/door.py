@@ -48,11 +48,18 @@ class DoorComponent(BaseComponent):
     def __init__(self, data):
         super().__init__(data)
         self.state = 0
+        self.open_timer = 0
 
     def update(self, engine, room, tick):
-        if 0 < self.state < 2:
-            if tick % 10 == 0:
-                self.state += 1
+        if self.state == 1:
+            self.open_timer += 1
+            if self.open_timer >= 30:
+                self.state = 2
+
+    def serialize(self, tick=0):
+        res = super().serialize(tick)
+        res['open_timer'] = self.open_timer
+        return res
 
     def process_proposal(self, engine, room, current_state, proposal):
         """Handle room transitions when walking into an open door."""
@@ -82,9 +89,11 @@ class DoorComponent(BaseComponent):
                                 'target_y': tobj.y + 32,
                                 'target_state': 2,
                                 'target_door': tobj,
-                                'door_x': tobj.x,
-                                'door_y': tobj.y,
-                                'door_dir': tobj.properties.get('direction', 0)
+                                'door_x': self.x,
+                                'door_y': self.y,
+                                'door_dir': tobj.properties.get('direction', 0),
+                                'phase': 'entering',
+                                'timer': 0
                             }
                             proposal['x'] = current_state.x
                             proposal['y'] = current_state.y

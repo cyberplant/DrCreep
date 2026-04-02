@@ -25,7 +25,8 @@ class WalkwayComponent(BaseComponent):
                 # Crucial: Don't snap Y if the player is trying to move vertically (entering ladder)
                 if proposal['move_mode'] == 'walkway' or (has_horizontal_intent and abs(proposal['y'] - self.y) < 4):
                     if not has_vertical_intent or proposal['move_mode'] == 'walkway':
-                        if not has_vertical_intent:
-                            proposal['y'] = self.y # Snap to top surface
-                        proposal['move_mode'] = 'walkway'
-                        proposal['has_support'] = True
+                        if not proposal.get('denied_support'):
+                            if not has_vertical_intent:
+                                proposal['y'] = self.y # Snap to top surface
+                            proposal['move_mode'] = 'walkway'
+                            proposal['has_support'] = True

@@ -20,8 +20,9 @@ class TrapdoorComponent(BaseComponent):
         if self.state == 1:
             # Check if entity's center is over the hole (within the 8-unit thickness range)
             if self.y <= proposal['y'] <= self.y + 8 and self.x - 4 <= proposal['x'] <= self.x + 12:
-                # DENY support. In our pipeline, this blocks movement or causes 'no support' logic.
+                # DENY support.
                 proposal['has_support'] = False
+                proposal['denied_support'] = True
 
     def get_asset(self, tick):
         return self.STATES.get(self.state, self.STATES[0])
@@ -42,6 +43,9 @@ class TrapdoorSwitchComponent(BaseComponent):
                     t_obj.state = 1 if t_obj.state == 0 else 0
                     self.state = 1 if self.state == 0 else 0 # Visual state
                     self._last_trigger_tick = engine.state.current_tick
+                    # Play sound event
+                    if not hasattr(engine.state, 'events'): engine.state.events = []
+                    engine.state.events.append('switch_toggle')
 
     def get_asset(self, tick):
         # Change appearance based on toggle state

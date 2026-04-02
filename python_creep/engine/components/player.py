@@ -30,5 +30,6 @@ class Player:
         return {
             'id': self.id, 'x': self.x, 'y': self.y, 'room_id': self.room_id, 
             'keys': self.keys, 'is_moving': self.is_moving, 
-            'is_acting': self.is_acting, 'facing_left': self.facing_left
+            'is_acting': self.is_acting, 'facing_left': self.facing_left,
+            'move_mode': self.move_mode
         }

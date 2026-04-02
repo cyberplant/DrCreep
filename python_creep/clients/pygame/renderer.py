@@ -41,17 +41,37 @@ class PygameRenderer:
         if sprite:
             self.world_surface.blit(sprite, (x_px, y_px))
 
-    def draw_entity_sprite(self, etype, x, y, facing_left, is_moving=False, tick=0, color_idx=None):
+    def draw_entity_sprite(self, etype, x, y, facing_left, is_moving=False, tick=0, color_idx=None, move_mode='walkway', shrink=1.0):
         sprite_id = 0
+        draw_x = self.px(x)
         if etype == 'player':
-            base = 3 if facing_left else 0
-            frame = (tick // 2) % 3 if is_moving else 0
-            sprite_id = base + frame
+            if move_mode == 'ladder':
+                # Ladder Climbing: 46, 47, 48
+                frame = (tick // 4) % 3 if is_moving else 0
+                sprite_id = 46 + frame
+                draw_x += 4 # +2 world units = +4 pixels
+            elif move_mode == 'pole':
+                # Pole Sliding: Use static frame 49 to avoid flickering
+                sprite_id = 49
+                draw_x += 4
+            else:
+                base = 3 if facing_left else 0
+                frame = (tick // 2) % 3 if is_moving else 0
+                sprite_id = base + frame
         elif etype == 'mummy': sprite_id = 0x4B if facing_left else 0x4E
         elif etype == 'frankie': sprite_id = 0x87 if facing_left else 0x84
         
+        y_offset = -21
+        if move_mode == 'walkway': y_offset = -17
+        
         sprite = self.assets.get_colored_sprite(sprite_id, color_idx) if color_idx is not None else self.assets.get_sprite(sprite_id)
-        if sprite: self.world_surface.blit(sprite, (self.px(x) - 8, self.py(y) - 21))
+        if sprite:
+            if shrink < 1.0:
+                sw, sh = int(sprite.get_width() * shrink), int(sprite.get_height() * shrink)
+                if sw > 0 and sh > 0:
+                    sprite = pygame.transform.scale(sprite, (sw, sh))
+            # Center horizontally relative to x
+            self.world_surface.blit(sprite, (draw_x - (sprite.get_width() // 2), self.py(y) + y_offset))
         else:
             color = C64_PALETTE[1]
             if etype == 'mummy': color = C64_PALETTE[15]
@@ -81,10 +101,15 @@ class PygameRenderer:
         transition = state.get('transition') or {}
         target_room_id = transition.get('to_room')
         discovered = state.get('discovered_rooms', [])
-        
         all_rooms = state.get('rooms', {})
-        ROOM_W, ROOM_H = 30, 20
-        SCALE_X, SCALE_Y = ROOM_W + 10, ROOM_H + 10
+        if not all_rooms: return self.world_surface
+
+        # Find min/max map coordinates to normalize
+        min_mx = min(r.get('map_x', 255) for r in all_rooms.values())
+        min_my = min(r.get('map_y', 255) for r in all_rooms.values())
+        
+        ROOM_W, ROOM_H = 12, 8
+        SCALE_X, SCALE_Y = 2, 2
         MARGIN_X, MARGIN_Y = 40, 40
 
         for r_id_str, r_data in all_rooms.items():
@@ -96,8 +121,8 @@ class PygameRenderer:
                 continue
             
             mx, my = r_data.get('map_x', 0), r_data.get('map_y', 0)
-            rx = MARGIN_X + mx * SCALE_X
-            ry = MARGIN_Y + my * SCALE_Y
+            rx = MARGIN_X + (mx - min_mx) * SCALE_X
+            ry = MARGIN_Y + (my - min_my) * SCALE_Y
 
             color = C64_PALETTE[r_data.get('color', 1)]
             pygame.draw.rect(self.world_surface, color, (rx, ry, ROOM_W, ROOM_H), 1)
@@ -151,7 +176,8 @@ class PygameRenderer:
             return self.world_surface
             
         if state.get('transition'):
-            return self.render_map_view(state)
+            if state.get('transition', {}).get('phase') == 'map':
+                return self.render_map_view(state)
 
         try:
             player = state['players'][0]
@@ -164,8 +190,11 @@ class PygameRenderer:
                 room_color = room.get('color', 1)
                 tick = state.get('tick', 0)
 
+                # Pass 1: Environmental objects (EXCEPT Ladders/Poles)
                 for obj in room['objects']:
                     ot = obj['type']
+                    if ot in ('ladder', 'pole'): continue
+                    
                     px, py = self.px(obj['x']), self.py(obj['y'])
                     props = obj.get('properties', {})
                     obj_state = obj.get('state', 0)
@@ -188,34 +217,42 @@ class PygameRenderer:
                             seg_x = px + i * 8
                             self.draw_env_sprite(sid, seg_x, py, room_color)
                             
-                            # Draw 1px shadow under the walkway
-                            pygame.draw.line(self.world_surface, C64_PALETTE[0], (seg_x, py + 8), (seg_x + 7, py + 8))
-                            # Draw 1px shadow on the right edge of the last segment
+                            # Draw brown depth edge under the walkway
+                            pygame.draw.line(self.world_surface, C64_PALETTE[9], (seg_x, py + 8), (seg_x + 7, py + 8))
+                            # Draw brown depth edge on the right edge of the last segment
                             if i == length - 1:
-                                pygame.draw.line(self.world_surface, C64_PALETTE[0], (seg_x + 8, py), (seg_x + 8, py + 8))
+                                pygame.draw.line(self.world_surface, C64_PALETTE[9], (seg_x + 8, py), (seg_x + 8, py + 8))
                                 
                             # Cut the walkway visually where a ladder intersects
                             if seg_x in ladder_xs:
                                 pygame.draw.rect(self.world_surface, C64_PALETTE[0], (seg_x + 2, py, 4, 8))
-                    elif ot == 'ladder':
-                        length = props.get('length', 0)
-                        for i in range(length + 1): # +1 to reach bottom path
-                            sid = 40 if i < length else 43 # 0x28 or 0x2B
-                            self.draw_env_sprite(sid, px, py + i * 8, 1) # White
-                    elif ot == 'pole':
-                        length = props.get('length', 0)
-                        for i in range(length + 1):
-                            sid = 36 # 0x24
-                            self.draw_env_sprite(sid, px, py + i * 8, 1)
                     elif ot == 'door':
                         color_idx = 2 if props.get('is_exit') else 4
                         frame_sprite = self.assets.get_colored_sprite(6, color_idx)
                         if frame_sprite: self.world_surface.blit(frame_sprite, (px, py))
                         int_offset = (px + 8, py + 17)
+                        
+                        open_timer = obj.get('open_timer', 0)
                         if obj_state == 0:
                             int_sprite = self.assets.get_colored_sprite(7, 1)
                             if int_sprite: self.world_surface.blit(int_sprite, int_offset)
-                        elif obj_state >= 1:
+                        elif obj_state == 1:
+                            # Animation from bottom to top
+                            closed_sprite = self.assets.get_colored_sprite(7, 1)
+                            nr_id = str(props.get('link_room', ''))
+                            nr_data = state['rooms'].get(nr_id)
+                            nr_color_id = nr_data.get('color', 1) if nr_data else 1
+                            open_sprite = self.assets.get_colored_sprite(8, nr_color_id)
+                            
+                            if closed_sprite and open_sprite:
+                                h = closed_sprite.get_height()
+                                progress = min(1.0, open_timer / 30.0)
+                                reveal_h = int(h * progress)
+                                if h - reveal_h > 0:
+                                    self.world_surface.blit(closed_sprite, int_offset, (0, 0, closed_sprite.get_width(), h - reveal_h))
+                                if reveal_h > 0:
+                                    self.world_surface.blit(open_sprite, (int_offset[0], int_offset[1] + h - reveal_h), (0, h - reveal_h, open_sprite.get_width(), reveal_h))
+                        elif obj_state >= 2:
                             nr_id = str(props.get('link_room', ''))
                             nr_data = state['rooms'].get(nr_id)
                             nr_color_id = nr_data.get('color', 1) if nr_data else 1
@@ -246,11 +283,16 @@ class PygameRenderer:
                     elif ot == 'lightning_machine':
                         sys_id = props.get('system_id', 0)
                         is_on = room.get('lightning_systems', {}).get(str(sys_id), False)
-                        for i in range(props.get('length', 4)):
+                        l_len = props.get('length', 4)
+                        for i in range(l_len):
                             self.draw_env_sprite(50, px, py + i * 8, 12) # Poles (0x32)
-                        self.draw_env_sprite(51, px - 4, py + props.get('length', 4) * 8, 12) # Spheres (0x33)
-                        if is_on and (tick // 2) % 2 == 0:
-                            self.draw_env_sprite(94, px, py + props.get('length', 4) * 8 + 8, 1) # Sparks (approx 0x5E)
+                        self.draw_env_sprite(51, px - 4, py + l_len * 8, 12) # Spheres (0x33)
+                        if is_on:
+                            # Bolt Animation (Flickering)
+                            if (tick // 2) % 2 == 0:
+                                bolt_frame = 94 + (tick % 3) # 94, 95, 96
+                                for j in range(l_len + 1):
+                                    self.draw_env_sprite(bolt_frame, px, py + j * 8, 1)
                     elif ot == 'lightning_switch':
                         self.draw_env_sprite(54, px, py, 1) # Switch Base (0x36)
                         self.draw_env_sprite(55, px + 4, py + 8, 1) # Switch Lever (0x37)
@@ -261,8 +303,7 @@ class PygameRenderer:
                             link_room_str = str(room['objects'][target_id].get('properties', {}).get('link_room', ''))
                             if link_room_str in state['rooms']:
                                 target_room_color = state['rooms'][link_room_str].get('color', 1)
-                        pygame.draw.rect(self.world_surface, C64_PALETTE[target_room_color], (px+8, py+8, 8, 8))
-                        bell_sprite = self.assets.get_colored_sprite(9, 1)
+                        bell_sprite = self.assets.get_colored_sprite(9, target_room_color)
                         if bell_sprite: self.world_surface.blit(bell_sprite, (px, py))
                     elif ot == 'key': self.draw_env_sprite(13, px, py, props.get('color', 1)) # Key (0x0D)
                     elif ot == 'lock': self.draw_env_sprite(14, px, py, props.get('color', 1)) # Lock (0x0E)
@@ -274,7 +315,7 @@ class PygameRenderer:
                         for dy in range(3):
                             for dx in range(5): self.draw_env_sprite(66, px + dx * 8, py + dy * 8, 2) # Tomb Blocks (0x42)
                     elif ot == 'mummy_release': self.draw_env_sprite(68, px, py, 1) # Button (0x44)
-                    elif ot == 'trapdoor_switch': self.draw_env_sprite(46, px, py, 3) # Switch (0x2E)
+                    elif ot == 'trapdoor_switch': self.draw_env_sprite(128, px, py, 3) # Switch (0x80 approx)
                     elif ot == 'conveyor':
                         for i in range(10): self.draw_env_sprite(125, px + i * 8, py, 6)
                     elif ot == 'conveyor_switch': self.draw_env_sprite(130, px, py, 1) # Conveyor switch (0x82)
@@ -283,14 +324,47 @@ class PygameRenderer:
                     elif ot == 'raygun_switch':
                         self.draw_env_sprite(54, px, py, 1) # Same base as lightning
 
-                # Entities
+                # Pass 2: Entities
                 for m in state.get('mummies', []):
                     if str(m['room_id']) == room_id:
                         self.draw_entity_sprite('mummy', m['x'], m['y'], m.get('facing_left'), m.get('is_moving'), tick, color_idx=1)
                 for f in state.get('frankies', []):
                     if str(f['room_id']) == room_id:
                         self.draw_entity_sprite('frankie', f['x'], f['y'], f.get('facing_left'), f.get('is_moving'), tick)
-                self.draw_entity_sprite('player', player['x'], player['y'], player.get('facing_left'), player.get('is_moving'), tick, color_idx=player.get('color', 1))
+                
+                # Player Rendering (with transition shrink support)
+                transition = state.get('transition') or {}
+                shrink_val = 1.0
+                p_x, p_y = player['x'], player['y']
+                p_mode = player.get('move_mode', 'walkway')
+                
+                if transition.get('phase') == 'entering':
+                    timer = transition.get('timer', 0)
+                    shrink_val = max(0.0, 1.0 - (timer / 50.0))
+                    p_x = transition.get('door_x', p_x) + 5
+                    p_y = transition.get('door_y', p_y) + 32
+                    p_mode = 'walkway' # Always use walkway pose for door entry
+                
+                self.draw_entity_sprite('player', p_x, p_y, player.get('facing_left'), player.get('is_moving'), tick, color_idx=player.get('color', 1), move_mode=p_mode, shrink=shrink_val)
+                
+                # Pass 3: Ladders and Poles (on top of player)
+                for obj in room['objects']:
+                    ot = obj['type']
+                    if ot not in ('ladder', 'pole'): continue
+                    
+                    px, py = self.px(obj['x']), self.py(obj['y'])
+                    props = obj.get('properties', {})
+                    
+                    if ot == 'ladder':
+                        length = props.get('length', 0)
+                        for i in range(length + 1): # +1 to reach bottom path
+                            sid = 40 if i < length else 43 # 0x28 or 0x2B
+                            self.draw_env_sprite(sid, px, py + i * 8, 1) # White
+                    elif ot == 'pole':
+                        length = props.get('length', 0)
+                        for i in range(length + 1):
+                            sid = 36 # 0x24
+                            self.draw_env_sprite(sid, px, py + i * 8, 1)
                 
                 # Projectiles
                 for proj in state.get('projectiles', []):

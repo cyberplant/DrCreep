@@ -9,7 +9,7 @@ class LadderComponent(BaseComponent):
     def __init__(self, data):
         super().__init__(data)
         self.length = data.get('length', 0)
-        self.end_y = self.y + (self.length * 8) - 8
+        self.end_y = self.y + (self.length * 8)
 
     def process_proposal(self, engine, room, player, proposal):
         """Handle mode switching and vertical snapping."""
@@ -26,8 +26,9 @@ class LadderComponent(BaseComponent):
             # Allow 'down' entry from the walkway surface (self.y)
             if self.y - 2 <= proposal['y'] <= self.end_y + 2:
                 if proposal['move_mode'] == 'ladder':
-                    # Only snap to X if no horizontal intent (allows walking off)
-                    if not has_horizontal_intent:
+                    # Only allow horizontal movement if overlapping a walkway
+                    on_walkway = any(obj.type == 'walkway' and obj.y <= proposal['y'] <= obj.y + 8 for obj in room.objects)
+                    if not on_walkway:
                         proposal['x'] = self.x
                     proposal['has_support'] = True
                 elif intent_up or intent_down:
@@ -43,7 +44,7 @@ class PoleComponent(BaseComponent):
     def __init__(self, data):
         super().__init__(data)
         self.length = data.get('length', 0)
-        self.end_y = self.y + (self.length * 8) - 8
+        self.end_y = self.y + (self.length * 8)
 
     def process_proposal(self, engine, room, player, proposal):
         # Calculate vertical intent
@@ -55,16 +56,17 @@ class PoleComponent(BaseComponent):
 
         if abs(proposal['x'] - self.x) < 4:
             if self.y - 2 <= proposal['y'] <= self.end_y + 2:
-                if proposal['move_mode'] == 'ladder':
-                    # Only snap to X if no horizontal intent
-                    if not has_horizontal_intent:
+                if proposal['move_mode'] == 'pole':
+                    # Only allow horizontal movement if overlapping a walkway
+                    on_walkway = any(obj.type == 'walkway' and obj.y <= proposal['y'] <= obj.y + 8 for obj in room.objects)
+                    if not on_walkway:
                         proposal['x'] = self.x
                     proposal['has_support'] = True
                     # Block UP movement on poles
                     if dy < -0.1: 
                         proposal['y'] = player.y
                 elif intent_down:
-                    # Switch to ladder mode only if moving DOWN
-                    proposal['move_mode'] = 'ladder'
+                    # Switch to pole mode only if moving DOWN
+                    proposal['move_mode'] = 'pole'
                     proposal['x'] = self.x
                     proposal['has_support'] = True

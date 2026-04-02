@@ -70,3 +70,6 @@ class ConveyorSwitchComponent(BaseComponent):
                             c_obj.state = 1
                             self._last_dir = 2
                         self._last_trigger_tick = engine.state.current_tick
+                        # Play sound event
+                        if not hasattr(engine.state, 'events'): engine.state.events = []
+                        engine.state.events.append('switch_toggle')

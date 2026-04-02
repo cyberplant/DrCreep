@@ -99,6 +99,12 @@ class GameEngine:
         
         tr = getattr(self.state, 'transition', None)
         if tr:
+            if tr.get('phase') == 'entering':
+                tr['timer'] += 1
+                if tr['timer'] >= 50: # 1 second
+                    tr['phase'] = 'map'
+                return
+
             if not getattr(self.state, '_transition_logged', False) and self.debug_mode:
                 log(f"--- MAP VIEW DEBUG (Tick {self.state.current_tick}) ---", style="cyan")
                 log(f"Target Room: {tr['to_room']}", style="cyan")
@@ -161,7 +167,8 @@ class GameEngine:
                 'is_acting': 10 if cmds.get('action') else max(0, getattr(ent, 'is_acting', 0) - 1),
                 'facing_left': (dx < 0) if dx != 0 else ent.facing_left,
                 'commands': cmds,
-                'has_support': False
+                'has_support': False,
+                'denied_support': False
             }
 
             if self.debug_mode and etype == 'player' and (dx != 0 or dy != 0 or cmds.get('action')):
@@ -225,7 +232,7 @@ class GameEngine:
             'victory': self.state.victory,
             'debug_mode': self.debug_mode,
             'discovered_rooms': list(getattr(self.state, 'discovered_rooms', set())),
-            'players': [{'id': p.id, 'x': p.x, 'y': p.y, 'room_id': p.room_id, 'keys': p.keys, 'is_moving': getattr(p, 'is_moving', False), 'is_acting': getattr(p, 'is_acting', 0), 'is_teleporting': getattr(p, 'is_teleporting', 0), 'facing_left': getattr(p, 'facing_left', False)} for p in self.state.players],
+            'players': [{'id': p.id, 'x': p.x, 'y': p.y, 'room_id': p.room_id, 'keys': p.keys, 'is_moving': getattr(p, 'is_moving', False), 'is_acting': getattr(p, 'is_acting', 0), 'is_teleporting': getattr(p, 'is_teleporting', 0), 'facing_left': getattr(p, 'facing_left', False), 'move_mode': getattr(p, 'move_mode', 'walkway')} for p in self.state.players],
             'mummies': [m.serialize() for m in self.state.mummies],
             'frankies': [f.serialize() for f in self.state.frankies],
             'projectiles': [p.serialize() for p in self.state.projectiles],

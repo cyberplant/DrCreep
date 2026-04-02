@@ -39,7 +39,20 @@ class LightningSwitchComponent(BaseComponent):
         """Handle interaction via pipeline."""
         dist_x, dist_y = abs(proposal['x'] - self.x), abs((proposal['y'] - 16) - self.y)
         if dist_x < 16 and dist_y < 48:
-            if proposal.get('commands', {}).get('action'):
+            cmds = proposal.get('commands', {})
+            rs = engine.room_states[proposal['room_id']]['lightning']
+            current_on = rs.get(self.system_id, False)
+            
+            should_toggle = False
+            if cmds.get('action'):
+                should_toggle = True
+            elif cmds.get('up') and not current_on:
+                should_toggle = True
+            elif cmds.get('down') and current_on:
+                should_toggle = True
+
+            if should_toggle:
+                # Toggle logic
                 # Special logic for tutorial room 4
                 if proposal['room_id'] == 4:
                     self.timer = 8
@@ -49,11 +62,18 @@ class LightningSwitchComponent(BaseComponent):
                 else:
                     sid = self.system_id
                     targets = self.targets
-                    rs = engine.room_states[proposal['room_id']]['lightning']
-                    if sid not in rs: rs[sid] = True
-                    rs[sid] = not rs[sid]
+                    rs[sid] = not current_on
                     for tid in targets:
                         if tid != 0xFF: rs[tid] = rs[sid]
+                
+                # Play sound event
+                if not hasattr(engine.state, 'events'): engine.state.events = []
+                engine.state.events.append('switch_toggle')
+
+            # Block vertical movement if we are at the switch
+            if cmds.get('up') or cmds.get('down'):
+                proposal['y'] = current_state.y
+                proposal['has_support'] = True
 
     def get_asset(self, tick):
         return ["[cyan][[yellow]T[/]][/]"]

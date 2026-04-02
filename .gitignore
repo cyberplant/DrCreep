@@ -1,0 +1,7 @@
+*.png
+*.log
+.DS_Store
+obj/
+run/data/
+project/*/xcuserdata/
+*.o
